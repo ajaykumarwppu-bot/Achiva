@@ -414,6 +414,15 @@
   /* purana session wapas mila (app khulte hi) — koi pooch-taach nahi */
   function resume(u) {
     user = u;
+    /* per-account local data : namespace set + legacy adopt.
+       Agar stored namespace is uid se alag thi (bina sign-out account badla)
+       to ek baar reload karo taaki features sahi account ka data padhein. */
+    if (window.AppStorage) {
+      var prev = window.AppStorage.ns();
+      window.AppStorage.setNamespace(u.uid);
+      window.AppStorage.adoptLegacy();
+      if (prev !== u.uid) { window.location.reload(); return; }
+    }
     lsDel(OFFLINE_KEY);
     setAccount(u);
     hideGate();
@@ -476,6 +485,8 @@
       user = null;
       setAccount(null);
       lsDel(OFFLINE_KEY);
+      /* account ka local data ab visible NAHI (namespace clear) */
+      if (window.AppStorage) window.AppStorage.setNamespace(null);
       signOutHandlers.forEach(function (fn) { try { fn(); } catch (e) { /* ignore */ } });
     };
     if (isOffline() || !p) { done(); return Promise.resolve(true); }

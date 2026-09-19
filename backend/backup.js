@@ -40,9 +40,19 @@
   function hasCloud() { return !!(CLOUD && CLOUD.ready && CLOUD.ready()); }
   function msg(e) { return CLOUD && CLOUD.message ? CLOUD.message(e) : 'Cloud se baat nahi ho payi.'; }
 
-  function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
-  function lsSet(k, v) { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } }
-  function lsDel(k) { try { window.localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+  /* namespace-aware raw access (per-account data) — AppStorage ke zariye */
+  function lsGet(k) {
+    if (window.AppStorage) return window.AppStorage.rawGet(k);
+    try { return window.localStorage.getItem(k); } catch (e) { return null; }
+  }
+  function lsSet(k, v) {
+    if (window.AppStorage) return window.AppStorage.rawSet(k, v);
+    try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; }
+  }
+  function lsDel(k) {
+    if (window.AppStorage) { window.AppStorage.rawDel(k); return; }
+    try { window.localStorage.removeItem(k); } catch (e) { /* ignore */ }
+  }
 
   function sess() {
     return (window.AchivaAuth && window.AchivaAuth.session) ? window.AchivaAuth.session() : null;
