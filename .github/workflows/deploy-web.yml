@@ -1,0 +1,62 @@
+name: Deploy Web
+
+on:
+  workflow_dispatch:          # manual run
+  push:
+    paths:
+      - '**/index.html'       # web files kahin bhi hon (root ya folder mein)
+      - '**/style/**'
+      - '**/core/**'
+      - '**/features/**'
+      - '**/backend/**'
+      - '.github/workflows/deploy-web.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find web root and prepare site folder
+        run: |
+          REL=$(git ls-files | grep -E '(^|/)index\.html$' | head -n 1)
+          if [ -z "$REL" ]; then
+            echo "::error::Repo mein index.html nahi mili — web files upload karo"
+            exit 1
+          fi
+          WEB_ROOT=$(dirname "$REL")
+          echo "✔ Web root mila: $WEB_ROOT"
+          mkdir -p _site
+          cp "$WEB_ROOT/index.html" _site/
+          for d in style core features backend; do
+            if [ -d "$WEB_ROOT/$d" ]; then
+              cp -r "$WEB_ROOT/$d" _site/
+            else
+              echo "::warning::Folder '$d' index.html ke saath nahi mila"
+            fi
+          done
+          # backend mein sirf JS website ke liye hai — rules/guide
+          # Firebase Console ke liye hain, site par publish nahi karne
+          rm -f _site/backend/firestore.rules _site/backend/FIREBASE_SETUP.md
+          ls -R _site | head -40
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
