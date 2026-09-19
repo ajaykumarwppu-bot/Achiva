@@ -1,0 +1,62 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'   // ★ Kotlin compile karne ke liye ZAROORI
+}
+
+android {
+    namespace 'com.achiva.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.achiva.app"
+        minSdk 26
+        targetSdk 34
+        versionCode 6
+        versionName "1.5"
+
+        // ★★ apna GitHub Pages URL (ending slash / ke saath) ★★
+        buildConfigField "String", "WEB_URL", "\"https://ajaykumarwppu-bot.github.io/achiva/\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    // ★ permanent signing key : har APK same signature se banega
+    //   → purana app delete kiye bina UPDATE install hoga, data safe
+    signingConfigs {
+        achiva {
+            storeFile file("achiva.keystore")
+            storePassword "achiva123"
+            keyAlias "achiva"
+            keyPassword "achiva123"
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (file("achiva.keystore").exists()) {
+                signingConfig signingConfigs.achiva
+            }
+        }
+        release {
+            minifyEnabled false
+            if (file("achiva.keystore").exists()) {
+                signingConfig signingConfigs.achiva
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    // koi external dependency nahi — bilkul halka
+}

@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>achiva</title>
+
+  <!-- style load order : foundation → layout → component → screen -->
+  <link rel="stylesheet" href="style/foundation.css">
+  <link rel="stylesheet" href="style/layout.css">
+  <link rel="stylesheet" href="style/component.css">
+  <link rel="stylesheet" href="style/screen.css">
+
+  <!-- theme pehle se laga do (paint se pehle) → dark mode par koi
+       "white flash" nahi. Pasand backend/settings.js save karti hai
+       (localStorage: achiva.prefs.v1) aur backup ke saath cloud par
+       bhi jaati hai. -->
+  <script>
+    (function () {
+      try {
+        var raw = window.localStorage.getItem('achiva.prefs.v1');
+        var p = raw ? JSON.parse(raw) : null;
+        if (p && p.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      } catch (e) { /* localStorage band ho to light theme hi rahega */ }
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- app shell (device frame) -->
+  <div class="device">
+    <div class="app" id="app" data-corner="br">
+
+      <!-- ======================================================
+           GLOBAL HEADER — poore app mein hamesha visible rehta hai
+           (brand lockup + settings gear + date chip)
+           koi own background nahi — app ka lined background hi dikhta hai
+      ======================================================= -->
+      <div class="home-top" style="position:absolute;top:0;left:0;right:0;z-index:35">
+        <div class="brand">
+          <span class="brand-mark">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </span>
+          <div>
+            <div class="brand-name">ACHIVA</div>
+            <div class="brand-sub">Study OS · v1.0</div>
+          </div>
+        </div>
+        <div class="hd-right">
+          <!-- SETTINGS button (pehle yahan theme toggle tha).
+               Gear ka SVG backend/settings.js daalta hai — wahi purani
+               .theme-btn class use hoti hai, isliye CSS ko chua nahi gaya.
+               Theme toggle ab Settings sheet ke andar hai. -->
+          <button class="theme-btn" id="settingsBtn" type="button" aria-label="Settings"></button>
+          <span class="date-chip" id="dateChip"></span>
+        </div>
+      </div>
+
+      <!-- screens (subjects / chapters / chapter view / books / features)
+           feature files aur neeche wale script se banti hain -->
+
+      <!-- ======================================================
+           FLOATING NAV BUTTON (FAB)
+           collapsed = circle (pulse-wave ring ke saath),
+           expanded  = options column + row + X,
+           long-hold drag → nearest corner par snap
+      ======================================================= -->
+      <div class="cmarks"><i class="c-tl"></i><i class="c-tr"></i><i class="c-bl"></i><i class="c-br"></i></div>
+
+      <button class="fab" id="fab" type="button" aria-label="Navigation menu">
+        <span class="ln ln1"></span><span class="ln ln2"></span><span class="ln ln3"></span>
+      </button>
+
+      <div id="fabCol" style="position:absolute;z-index:55;visibility:hidden;opacity:0;transform:scale(.6);transition:transform .32s cubic-bezier(.34,1.25,.4,1),opacity .2s;display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:22px;background:var(--menu-bg);border:1px solid var(--line);box-shadow:0 26px 54px -22px rgba(20,23,28,.55),inset 0 1px 0 var(--hl-soft);pointer-events:none">
+          <button class="mitem" data-key="dash" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">DASH</span>
+          </button>
+          <button class="mitem" data-key="cal" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">CAL</span>
+          </button>
+          <button class="mitem" data-key="subs" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">SUBS</span>
+          </button>
+          <button class="mitem" data-key="time" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">TIME</span>
+          </button>
+      </div>
+      <div id="fabRow" style="position:absolute;z-index:55;visibility:hidden;opacity:0;transform:scale(.6);transition:transform .32s cubic-bezier(.34,1.25,.4,1),opacity .2s;display:flex;gap:8px;padding:10px;border-radius:22px;background:var(--menu-bg);border:1px solid var(--line);box-shadow:0 26px 54px -22px rgba(20,23,28,.55),inset 0 1px 0 var(--hl-soft);pointer-events:none">
+          <button class="mitem" data-key="tasks" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12l3 3 5-6"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">TASKS</span>
+          </button>
+          <button class="mitem" data-key="habits" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">HABITS</span>
+          </button>
+          <button class="mitem" data-key="goals" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">GOALS</span>
+          </button>
+          <button class="mitem" data-key="draw" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">DRAW</span>
+          </button>
+      </div>
+
+      <!-- ==============================================
+           LOGIN GATE (compulsory email login)
+           ye div sirf ek placeholder hai — andar ka poora form
+           backend/auth.js banata hai. z-index 400 = sabse upar
+           (header 35 · FAB 55 · modals 95), isliye login ke bina
+           app ka koi hissa chhua nahi ja sakta.
+           Agar Firebase config nahi bhara hua to gate khud hi
+           "Login abhi band hai" dikha kar app kholne deta hai.
+      =============================================== -->
+      <div id="authGate" style="position:absolute;inset:0;z-index:400;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(12,14,18,.62);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);transition:opacity .22s ease">
+        <div style="font-size:12px;color:#e8ebef;text-align:center;line-height:1.8;padding:20px;border:1px solid rgba(255,255,255,.16);border-radius:20px;background:rgba(20,24,30,.82)">
+          Achiva khul raha hai...
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- scripts : storage + shared ui first, phir feature files -->
+  <script src="core/storage.js"></script>
+  <script src="core/ui.js"></script>
+  <script src="features/subject tracker/list.js"></script>
+  <script src="features/subject tracker/basics.js"></script>
+  <script src="features/subject tracker/sources.js"></script>
+  <script src="features/subject tracker/sources-detail.js"></script>
+  <script src="features/subject tracker/topic.js"></script>
+  <script src="features/subject tracker/rivision.js"></script>
+  <script src="features/subject tracker/test.js"></script>
+  <script src="features/subject tracker/doubt.js"></script>
+  <script src="features/subject tracker/error.js"></script>
+  <script src="features/canvas/canvas.js"></script>
+  <script src="features/canvas/canvas-editor.js"></script>
+  <script src="features/canvas/canvas-cards.js"></script>
+  <script src="features/canvas/canvas-lines.js"></script>
+  <script src="features/canvas/canvas-groups.js"></script>
+  <script src="features/timer/timer-bridge.js"></script>
+  <script src="features/timer/timer.js"></script>
+
+  <!-- ==============================================
+       BACKEND : Firebase (login + manual backup)
+       • Firebase compat SDK (CDN) — window.firebase banata hai
+       • phir hamari 5 backend files (order zaroori hai)
+       Config na bhari ho to ye sab chup-chaap band rehta hai,
+       app pehle jaisa chalti hai (gate par message dikhta hai).
+  =============================================== -->
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"></script>
+  <script src="backend/firebase-config.js"></script>
+  <script src="backend/cloud.js"></script>
+  <script src="backend/auth.js"></script>
+  <script src="backend/backup.js"></script>
+  <script src="backend/settings.js"></script>
+
+  <!-- header ka own chhota sa script : sirf live date
+       (theme toggle ab Settings sheet mein hai → backend/settings.js) -->
+  <script>
+    (function () {
+      'use strict';
+      /* date chip : "TUE · 15 SEPT" format */
+      var d = new Date();
+      var days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+      var months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEPT', 'OCT', 'NOV', 'DEC'];
+      document.getElementById('dateChip').textContent =
+        days[d.getDay()] + ' · ' + d.getDate() + ' ' + months[d.getMonth()];
+    })();
+  </script>
+
+  <!-- ======================================================
+       FLOATING NAV BUTTON : expand/collapse + drag-snap +
+       feature navigation (coming-soon screens)
+  ======================================================= -->
+  <script>
+    (function () {
+      'use strict';
+      var app = document.getElementById('app');
+      var fab = document.getElementById('fab');
+      var col = document.getElementById('fabCol');
+      var row = document.getElementById('fabRow');
+      var FAB = 58, MARGIN = 14;
+      var COL_W = 72, COL_H = 252, ROW_W = 252, ROW_H = 72;
+      var corner = 'br';
+      var menuOpen = false;
+
+      /* ---------- coming-soon feature screens ---------- */
+      var FEATURE_SCREENS = {};
+      var FEATURE_TITLES = {
+        dash: 'Dashboard', cal: 'Calendar',
+        tasks: 'Tasks', habits: 'Habits', goals: 'Goals'
+      };
+      Object.keys(FEATURE_TITLES).forEach(function (key) {
+        var s = UI.el('section', 'screen');
+        s.style.paddingTop = '58px';
+        var head = UI.el('div');
+        head.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 18px 4px';
+        /* back arrow NAHI : ye apne aap mein ek feature screen hai
+           (kisi cheez ke andar nahi) — is par aana-jaana FAB
+           (menu button) se hi hota hai */
+        var tw = UI.el('div', 'sub-title-wrap');
+        tw.appendChild(UI.el('h2', null, FEATURE_TITLES[key]));
+        tw.appendChild(UI.el('div', 'sub-meta', 'Naya feature'));
+        head.appendChild(tw);
+        s.appendChild(head);
+        var wrap = UI.el('div', 'scroll');
+        var empty = UI.el('div', 'empty', 'Coming soon<br>' + FEATURE_TITLES[key] + ' feature yahan jald add hoga.');
+        empty.style.margin = '12px 18px';
+        wrap.appendChild(empty);
+        s.appendChild(wrap);
+        app.appendChild(s);
+        FEATURE_SCREENS[key] = s;
+      });
+
+      /* ---------- corner positioning ---------- */
+      function cornerPos(c) {
+        var w = app.clientWidth, h = app.clientHeight;
+        if (c === 'br') return { x: w - FAB - MARGIN, y: h - FAB - MARGIN };
+        if (c === 'bl') return { x: MARGIN, y: h - FAB - MARGIN };
+        if (c === 'tr') return { x: w - FAB - MARGIN, y: MARGIN + 44 };
+        return { x: MARGIN, y: MARGIN + 44 };
+      }
+
+      function place(c, animate) {
+        corner = c;
+        app.setAttribute('data-corner', c);
+        var p = cornerPos(c);
+        if (animate) {
+          fab.classList.add('snap');
+          window.setTimeout(function () { fab.classList.remove('snap'); }, 420);
+        }
+        fab.style.left = p.x + 'px';
+        fab.style.top = p.y + 'px';
+        if (menuOpen) positionGroups();
+      }
+
+      /* fab ki current position (inline style se — layout-safe) */
+      function fabXY() {
+        return { x: parseInt(fab.style.left, 10) || 0, y: parseInt(fab.style.top, 10) || 0 };
+      }
+
+      /* ---------- menu open/close ----------
+         Corner-wise directions : dono groups fab wale corner ki
+         dono edges ke along khulte hain (screen mein fit) :
+           br → column upar, row left   |  bl → column upar, row right
+           tr → column neeche, row left  |  tl → column neeche, row right */
+      function clamp(v, min, max) { return Math.min(Math.max(min, v), max); }
+
+      function positionGroups() {
+        var p = fabXY();
+        var w = app.clientWidth, h = app.clientHeight;
+        var rightSide = (corner === 'br' || corner === 'tr');
+        var bottomSide = (corner === 'br' || corner === 'bl');
+        /* column (4 items vertical) */
+        col.style.left = clamp(p.x - 7, 4, w - COL_W - 4) + 'px';
+        col.style.top = (bottomSide
+          ? clamp(p.y - 8 - COL_H, 4, h - COL_H - 4)
+          : clamp(p.y + FAB + 8, 4, h - COL_H - 4)) + 'px';
+        col.style.transformOrigin = '50% ' + (bottomSide ? '100%' : '0%');
+        /* row (4 items horizontal) */
+        row.style.top = clamp(p.y - 7, 4, h - ROW_H - 4) + 'px';
+        row.style.left = (rightSide
+          ? clamp(p.x - 8 - ROW_W, 4, w - ROW_W - 4)
+          : clamp(p.x + FAB + 8, 4, w - ROW_W - 4)) + 'px';
+        row.style.transformOrigin = (rightSide ? '100%' : '0%') + ' 50%';
+      }
+
+      function openMenu() {
+        menuOpen = true;
+        app.classList.add('menu-open');
+        positionGroups();
+        [col, row].forEach(function (g) {
+          g.style.visibility = 'visible';
+          g.style.pointerEvents = 'auto';
+        });
+        window.requestAnimationFrame(function () {
+          [col, row].forEach(function (g) {
+            g.style.opacity = '1';
+            g.style.transform = 'none';
+          });
+        });
+      }
+
+      function closeMenu() {
+        if (!menuOpen) return;
+        menuOpen = false;
+        app.classList.remove('menu-open');
+        [col, row].forEach(function (g) {
+          g.style.opacity = '0';
+          g.style.transform = 'scale(.6)';
+          g.style.pointerEvents = 'none';
+        });
+        window.setTimeout(function () {
+          if (!menuOpen) {
+            [col, row].forEach(function (g) { g.style.visibility = 'hidden'; });
+          }
+        }, 260);
+      }
+
+      /* ---------- FAB visibility ----------
+         FAB sirf main screens par dikhta hai (subjects / chapters /
+         books / feature screens). Chapter-view (basics / topic /
+         sources / revision) ke andar list.js ka showScreen ise
+         setVisible(false) se chhupa deta hai. */
+      var fabVisible = true;
+      var fabVisTimer = null;
+
+      function setVisible(v) {
+        v = !!v;
+        if (v === fabVisible) return;
+        fabVisible = v;
+        if (!v) closeMenu();          /* khula menu bhi saath band */
+        fab.style.pointerEvents = v ? 'auto' : 'none';
+        if (fabVisTimer) { window.clearTimeout(fabVisTimer); fabVisTimer = null; }
+        if (v) {
+          fab.style.visibility = 'visible';
+          fab.style.opacity = '0';
+          window.requestAnimationFrame(function () {
+            if (!fabVisible) return;
+            fab.style.transition = 'opacity .28s ease';
+            fab.style.opacity = '1';
+            fabVisTimer = window.setTimeout(function () {
+              fabVisTimer = null;
+              fab.style.transition = '';   /* .snap corner animation safe */
+            }, 300);
+          });
+        } else {
+          fab.style.transition = 'opacity .22s ease';
+          fab.style.opacity = '0';
+          fabVisTimer = window.setTimeout(function () {
+            fabVisTimer = null;
+            if (!fabVisible) {
+              fab.style.visibility = 'hidden';
+              fab.style.transition = '';
+            }
+          }, 240);
+        }
+      }
+
+      window.AchivaFab = { setVisible: setVisible };
+
+      /* ---------- navigation ---------- */
+      function onMenuClick(e) {
+        var item = e.target.closest('.mitem');
+        if (!item) return;
+        var key = item.getAttribute('data-key');
+        closeMenu();
+        var B = window.SubjectListBridge;
+        if (key === 'subs') {
+          B.show(B.subjectScreen(), false);
+        } else if (key === 'time') {
+          /* Time = screen-time tracker (features/timer/) */
+          if (window.TimerFeature) window.TimerFeature.open();
+        } else if (key === 'draw') {
+          /* Draw = Canvas feature (canvas/canvas.js) */
+          if (window.CanvasList) window.CanvasList.openList();
+        } else {
+          B.show(FEATURE_SCREENS[key], true);
+        }
+      }
+      col.addEventListener('click', onMenuClick);
+      row.addEventListener('click', onMenuClick);
+
+      document.addEventListener('pointerdown', function (e) {
+        if (menuOpen && !col.contains(e.target) && !row.contains(e.target) && !fab.contains(e.target)) closeMenu();
+      });
+
+      /* ---------- drag (long-hold) + corner snap ---------- */
+      var drag = null;
+      fab.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        if (fab.setPointerCapture) fab.setPointerCapture(e.pointerId);
+        var p0 = fabXY();
+        drag = { sx: e.clientX, sy: e.clientY, ox: p0.x, oy: p0.y, moved: false };
+      });
+      fab.addEventListener('pointermove', function (e) {
+        if (!drag) return;
+        var dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+        if (!drag.moved && Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        if (!drag.moved) {
+          drag.moved = true;
+          closeMenu();
+          app.classList.add('dragging');
+          fab.classList.remove('snap');
+        }
+        var w = app.clientWidth, h = app.clientHeight;
+        var x = Math.min(Math.max(4, drag.ox + dx), w - FAB - 4);
+        var y = Math.min(Math.max(4, drag.oy + dy), h - FAB - 4);
+        fab.style.left = x + 'px';
+        fab.style.top = y + 'px';
+      });
+      fab.addEventListener('pointerup', function () {
+        if (!drag) return;
+        var wasMoved = drag.moved;
+        drag = null;
+        app.classList.remove('dragging');
+        if (!wasMoved) {
+          /* tap → menu toggle */
+          if (menuOpen) closeMenu(); else openMenu();
+          return;
+        }
+        /* nearest corner par snap */
+        var p1 = fabXY();
+        var fx = p1.x + FAB / 2, fy = p1.y + FAB / 2;
+        var w = app.clientWidth, h = app.clientHeight;
+        var c = (fx > w / 2 ? 'r' : 'l') + (fy > h / 2 ? 'b' : 't');
+        place(c === 'rb' ? 'br' : c === 'lb' ? 'bl' : c === 'rt' ? 'tr' : 'tl', true);
+      });
+      fab.addEventListener('pointercancel', function () {
+        drag = null;
+        app.classList.remove('dragging');
+      });
+
+      window.addEventListener('resize', function () { place(corner, false); });
+
+      /* initial position */
+      place('br', false);
+    })();
+  </script>
+
+  <!-- ==============================================
+       BACKEND BOOT — sabse aakhri script.
+       Pehle Firestore ready, phir login gate chalu.
+       (Gate ka HTML upar #authGate mein hai, isliye
+       scripts load hote waqt app dikhta hi nahi.)
+  =============================================== -->
+  <script>
+    (function () {
+      'use strict';
+      if (window.AchivaCloud) window.AchivaCloud.init();
+      if (window.AchivaAuth) {
+        window.AchivaAuth.boot();
+        /* sign out hote hi login gate wapas — app bina login nahi chalegi */
+        window.AchivaAuth.onSignOut(function () { window.AchivaAuth.showGate(); });
+      }
+    })();
+  </script>
+</body>
+</html>
