@@ -15,7 +15,7 @@ android {
         versionName "1.5"
 
         // ★★ apna GitHub Pages URL (ending slash / ke saath) ★★
-        buildConfigField "String", "WEB_URL", "\"https://ajaykumarwppu-bot.github.io/achiva/\""
+        buildConfigField "String", "WEB_URL", "\"https://ajaykumarwppu-bot.github.io/Achiva/\""
     }
 
     buildFeatures {
