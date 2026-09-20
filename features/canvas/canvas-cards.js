@@ -4,12 +4,17 @@
    • Double-tap khali jagah → naya card (editor ki tap-detection)
    • Card : drag-move, resize (se/e/s handles)
    • Card par TAP → koi popup nahi : card ke just upar mini
-     toolbar : [Focus] [Text] [Delete] [Color]
+     toolbar : [Focus] [Text] [Delete] [Color] [Tag]
        - Focus  : card screen ke beech mein aa jata hai
        - Text   : cursor card ke ANDAR blink karta hai, wahin likho
                   (contenteditable), bahar click par save
        - Delete : do-click confirm
        - Color  : poori color plate + saved colors (editor shared)
+       - Tag    : universal tag symbol → popup list :
+                  Daily task / Task–specific date / Task–date range
+                  → card ko background mein tag (c.tag) lagta hai,
+                  card par chhota chip dikhta hai (DAILY / date / range);
+                  goal feature inhi tags ko future mein use karega
    • 4 side anchors → curved lines (canvas-lines.js)
    ================================================================ */
 
@@ -25,6 +30,8 @@
   var ICON_TEXT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>';
   var ICON_TRASH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
   var ICON_COLOR = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="1.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="1.5" fill="currentColor"/><circle cx="6.5" cy="12.5" r="1.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.8-.7 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17c2.8 0 5-2.2 5-5 0-5-4.5-9-10-9z"/></svg>';
+
+  var ICON_TAG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4L11 3.8A2 2 0 0 0 9.6 3H4a1 1 0 0 0-1 1v5.6c0 .5.2 1 .6 1.4l9.6 9.6a2 2 0 0 0 2.8 0l4.6-4.6a2 2 0 0 0 0-2.8z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor"/></svg>';
 
   var E = null;
   var canvas = null;
@@ -51,7 +58,8 @@
           E.commit();
           render();
         });
-      }]
+      }],
+      [ICON_TAG, 'Tag', function (c) { hideToolbar(); openTagPopup(c); }]
     ];
     defs.forEach(function (d) {
       var b = el('button', null, d[0]);
@@ -106,7 +114,7 @@
     var sy = c.y * t.s + t.y + r.top;
     var sw = c.w * t.s;
     toolbar.style.display = 'flex';
-    var tbW = 170;
+    var tbW = 208;
     var left = Math.max(8, Math.min(sx + sw / 2 - tbW / 2, (r.width || 360) - tbW - 8));
     var top = sy - 48;
     if (top < 8) top = sy + c.h * t.s + 8;
@@ -117,6 +125,70 @@
   function liveRecolor(c, col) {
     var node = E.cardsLayer.querySelector('[data-cid="' + c.id + '"]');
     if (node) node.style.background = col;
+  }
+
+  /* ---------- TAG popup : card ko background tag dena ---------- */
+  function tagLabel(t) {
+    if (!t) return '';
+    if (t.type === 'daily') return 'DAILY';
+    if (t.type === 'date') return UI.fmtDate(t.date);
+    if (t.type === 'range') return UI.fmtDate(t.from) + ' \u2192 ' + UI.fmtDate(t.to);
+    return '';
+  }
+
+  function applyTag(c, tag) {
+    c.tag = tag;
+    if (window.CanvasList) window.CanvasList.persistNow();
+    if (E && E.commit) E.commit();
+    if (E) render();
+  }
+
+  function openTagPopup(c) {
+    var m = UI.modal({ zScrim: 90, zWrap: 91 });
+    m.open('Task tag', function (body) {
+      var info = el('div', null, 'Is card ko ek task tag do — goal mein kaam aayega.');
+      info.style.cssText = 'font-size:11.5px;color:var(--slate);line-height:1.6;margin-bottom:12px';
+      body.appendChild(info);
+
+      function row(label, sub, onPick) {
+        var b = el('button');
+        b.type = 'button';
+        b.style.cssText = 'width:100%;text-align:left;padding:11px 12px;border-radius:12px;cursor:pointer;' +
+          'border:1px solid var(--s2);background:var(--chip-bg);font:inherit;margin-bottom:8px';
+        var t1 = el('div', null, label);
+        t1.style.cssText = 'font-size:12.5px;font-weight:700;color:var(--ink)';
+        var t2 = el('div', null, sub);
+        t2.style.cssText = 'font-size:10.5px;color:var(--slate);margin-top:2px';
+        b.appendChild(t1); b.appendChild(t2);
+        b.addEventListener('click', function () { m.close(); onPick(); });
+        body.appendChild(b);
+      }
+
+      row('Daily task', 'roz lagataar chalne wala task', function () {
+        applyTag(c, { type: 'daily' });
+      });
+      row('Task — specific date', 'ek fix date ke liye task', function () {
+        window.AchivaCalendar.open('Task date', c.tag && c.tag.date, function (iso) {
+          applyTag(c, { type: 'date', date: iso });
+        });
+      });
+      row('Task — date range', 'from → to ke beech chalne wala task', function () {
+        var fromISO = (c.tag && c.tag.from) || null;
+        window.AchivaCalendar.open('From', fromISO, function (f) {
+          window.AchivaCalendar.open('To', (c.tag && c.tag.to) || f, function (t0) {
+            applyTag(c, { type: 'range', from: f, to: t0 });
+          });
+        });
+      });
+      if (c.tag) {
+        var clr = el('button', 'btn-ghost', 'Remove tag');
+        clr.style.width = '100%';
+        clr.addEventListener('click', function () { m.close(); applyTag(c, null); });
+        body.appendChild(clr);
+      }
+    }, null);
+    var sv = m.sheet.querySelector('.sheet-actions .btn-solid');
+    if (sv) sv.style.display = 'none';
   }
 
   function deleteCard(c) {
@@ -204,6 +276,20 @@
     txt.style.cssText = 'position:absolute;inset:8px;font-size:13px;line-height:1.45;color:#22262c;' +
       'white-space:pre-wrap;word-break:break-word;overflow:hidden';
     d.appendChild(txt);
+
+    /* tag chip (top-right) : daily / date / range */
+    if (c.tag) {
+      var chipT = el('div', null, esc(tagLabel(c.tag)));
+      chipT.style.cssText = 'position:absolute;top:4px;right:6px;max-width:70%;overflow:hidden;' +
+        'text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:99px;font-size:8.5px;' +
+        'font-weight:700;letter-spacing:.05em;pointer-events:none;' +
+        (c.tag.type === 'daily'
+          ? 'background:rgba(31,111,235,.14);color:#1f6feb;border:1px solid rgba(31,111,235,.4)'
+          : c.tag.type === 'date'
+            ? 'background:rgba(160,106,0,.14);color:#a06a00;border:1px solid rgba(160,106,0,.4)'
+            : 'background:rgba(46,160,67,.14);color:#2ea043;border:1px solid rgba(46,160,67,.4)');
+      d.appendChild(chipT);
+    }
 
     [['se', 'right:-6px;bottom:-6px;cursor:nwse-resize'],
      ['e', 'right:-6px;top:50%;margin-top:-6px;cursor:ew-resize'],
@@ -358,6 +444,9 @@
     anchorPoint: anchorPoint,
     anchorAtWorld: anchorAtWorld,
     cardById: cardById,
-    hideToolbar: hideToolbar
+    hideToolbar: hideToolbar,
+    tagLabel: tagLabel,
+    applyTag: applyTag,
+    openTagPopup: openTagPopup
   };
 })();

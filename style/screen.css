@@ -106,3 +106,25 @@
      • Question Recall ki unique UI styling
      • Settings screen ki specific design
    ================================================================ */
+
+/* ---------- goals : heat-map boxes (month-wise, crisp, both themes) ---------- */
+.gh-box{width:15px;height:15px;border-radius:4px;box-sizing:border-box;flex:none;
+  border:1px solid #c9cfd7;background:#eef1f5}
+.gh-l1{background:rgba(46,160,67,.35);border-color:#8cc49b}
+.gh-l2{background:rgba(46,160,67,.65);border-color:#4d9e63}
+.gh-l3{background:#2ea043;border-color:#227a33}
+.gh-l4{background:#187f2e;border-color:#0f5f22;box-shadow:0 0 8px rgba(46,160,67,.6)}
+.gh-fut{background:transparent;border:1px solid #c9cfd7}
+.gh-g1{background:rgba(212,160,23,.55);border-color:#b8860b}
+.gh-g2{background:#f5b301;border-color:#c98f00;box-shadow:0 0 9px rgba(245,179,1,.65)}
+[data-theme="dark"] .gh-box{border-color:#4b5563;background:#262c33}
+[data-theme="dark"] .gh-l1{background:rgba(63,185,80,.35);border-color:#3d7a4c}
+[data-theme="dark"] .gh-l2{background:rgba(63,185,80,.65);border-color:#4d9e63}
+[data-theme="dark"] .gh-l3{background:#3fb950;border-color:#2ea043}
+[data-theme="dark"] .gh-l4{background:#56d364;border-color:#3fb950;box-shadow:0 0 9px rgba(86,211,100,.7)}
+[data-theme="dark"] .gh-fut{background:transparent;border-color:#4b5563}
+[data-theme="dark"] .gh-g1{background:rgba(255,193,7,.45);border-color:#c98f00}
+[data-theme="dark"] .gh-g2{background:#ffd75e;border-color:#f5b301;box-shadow:0 0 10px rgba(255,215,94,.7)}
+
+/* ---------- good habit card : built-in mid chevron hataya ---------- */
+.sub-card.no-chevron::after{content:none}

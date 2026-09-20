@@ -33,7 +33,8 @@
     'achiva.canvas.v1',
     'achiva.timer.study.v1',
     'achiva.timer.manual.v1',
-    'achiva.canvas.savedColors'
+    'achiva.canvas.savedColors',
+    'achiva.goals.v1'
   ];
 
   /* ---------- namespace ---------- */

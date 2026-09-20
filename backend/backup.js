@@ -34,6 +34,7 @@
     { docId: 'timerStudy',     key: 'achiva.timer.study.v1',      label: 'Screen-time log',     main: true },
     { docId: 'timerManual',    key: 'achiva.timer.manual.v1',     label: 'Manual time entries', main: true },
     { docId: 'canvasColors',   key: 'achiva.canvas.savedColors',  label: 'Canvas colours',      main: false },
+    { docId: 'goals',          key: 'achiva.goals.v1',            label: 'Goals + sessions',    main: true },
     { docId: 'prefs',          key: 'achiva.prefs.v1',            label: 'App settings',        main: false }
   ];
 

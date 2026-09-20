@@ -145,6 +145,14 @@
   <script src="features/canvas/canvas-groups.js"></script>
   <script src="features/timer/timer-bridge.js"></script>
   <script src="features/timer/timer.js"></script>
+  <script src="features/goals/goal-list.js"></script>
+  <script src="features/goals/goal-heat.js"></script>
+  <script src="features/goals/goal-task.js"></script>
+  <script src="features/goals/goal-detail.js"></script>
+  <script src="features/habit/GoodSystem.js"></script>
+  <script src="features/habit/good-list.js"></script>
+  <script src="features/habit/good-detail.js"></script>
+  <script src="features/habit/good-system-scenarios.js"></script>
 
   <!-- ==============================================
        BACKEND : Firebase (login + manual backup)
@@ -362,6 +370,12 @@
         } else if (key === 'draw') {
           /* Draw = Canvas feature (canvas/canvas.js) */
           if (window.CanvasList) window.CanvasList.openList();
+        } else if (key === 'goals') {
+          /* Goals = Goal feature (features/goals/) */
+          if (window.GoalList) window.GoalList.open();
+        } else if (key === 'habits') {
+          /* Habits = Good habits (features/habit/good-list.js) */
+          if (window.GoodList) window.GoodList.open();
         } else {
           B.show(FEATURE_SCREENS[key], true);
         }

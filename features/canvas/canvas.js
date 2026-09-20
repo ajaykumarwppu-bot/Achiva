@@ -71,12 +71,16 @@
     screen.appendChild(head);
 
     var wrap = el('div', 'scroll');
-    if (!data.canvases.length) {
+    /* goal-scoped boards (category:'goal') Draw list mein NAHI dikhte —
+       wo sirf apne goal ke andar (goal-task.js) khulte hain */
+    var free = data.canvases.filter(function (c) { return c.category !== 'goal'; });
+    head.querySelector('.sub-meta').textContent = free.length + ' canvases';
+    if (!free.length) {
       var empty = el('div', 'empty', 'Koi canvas nahi.<br>+ button se apna pehla canvas add karo.');
       empty.style.margin = '12px 18px';
       wrap.appendChild(empty);
     }
-    data.canvases.slice().reverse().forEach(function (c) {
+    free.slice().reverse().forEach(function (c) {
       wrap.appendChild(canvasCard(c));
     });
     screen.appendChild(wrap);

@@ -135,9 +135,12 @@
 
   function closeStepSheet() { stepModal.close(); }
 
-  /* ============ CALENDAR MODAL (core/ui.js factory) ============ */
+  /* ============ CALENDAR MODAL (core/ui.js factory) ============
+     NOTE : z-index sab modal sheets se UPAR rakha hai (96/97) taaki
+     ye kisi bhi khule popup (jaise goal Detail modal 85/86) ke
+     UPAR khule aur date-pick click kabhi block na ho. */
   var calModal = UI.modal({
-    zScrim: 84, zWrap: 85,
+    zScrim: 96, zWrap: 97,
     width: 'min(320px, calc(100% - 44px))',
     saveLabel: 'Today'
   });
@@ -371,4 +374,6 @@
   }
 
   window.Basics = { renderChapterView: renderChapterView };
+  /* shared custom calendar (goals etc. bhi use karte hain) */
+  window.AchivaCalendar = { open: openCalendar };
 })();

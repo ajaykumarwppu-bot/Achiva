@@ -15,6 +15,7 @@ android {
         versionName "1.5"
 
         // ★★ apna GitHub Pages URL (ending slash / ke saath) ★★
+        // NOTE: Pages path CASE-SENSITIVE hai — repo 'Achiva' hai, isliye '/Achiva/' (capital A)
         buildConfigField "String", "WEB_URL", "\"https://ajaykumarwppu-bot.github.io/Achiva/\""
     }
 

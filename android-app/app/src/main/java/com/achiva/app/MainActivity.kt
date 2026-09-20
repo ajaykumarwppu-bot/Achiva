@@ -37,7 +37,7 @@ class MainActivity : Activity() {
                     "android-app/app/build.gradle mein WEB_URL abhi bhi placeholder hai.\n\n" +
                     "1. GitHub repo mein app/build.gradle kholo\n" +
                     "2. WEB_URL mein apna Pages URL daalo, jaise:\n" +
-                    "   https://ajaykumarwppu-bot.github.io/achiva/\n" +
+                    "   https://ajaykumarwppu-bot.github.io/Achiva/\n" +
                     "3. Commit karo → Build APK workflow dobara chalega\n" +
                     "4. Naya APK install karo"
                 )
