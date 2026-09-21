@@ -33,6 +33,9 @@
   /* ---------- app ke saare data keys (backup mein yahi jayenge) ----------
      docId = Firestore document ka naam | key = localStorage key
      label = Settings mein dikhne wala naam | main = asli study data hai?  */
+  /* NOTE: 'achiva.ai.keys.v1' (BYOK AI keys) JAAN-BOOJH KAR yahan NAHI hai —
+     user ki AI API key device se bahar (cloud) kabhi nahi jaani chahiye.
+     Galti se bhi is key ko DOCS mein add mat karna. */
   var DOCS = [
     { docId: 'subjectTracker', key: 'achiva.subjectTracker.v1',   label: 'Subjects + chapters', main: true },
     { docId: 'canvas',         key: 'achiva.canvas.v1',           label: 'Canvas boards',       main: true },

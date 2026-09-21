@@ -1,8 +1,11 @@
 /* ================================================================
    CANVAS / CANVAS-LINES.JS  —  connections (curved lines)
    ----------------------------------------------------------------
-   • Cards ke 4-side anchors ke beech CURVED bezier lines
-   • Card move par auto-reroute
+   • Cards AUR group boxes (virtual glass cards) ke 4-side anchors
+     ke beech CURVED bezier lines — card↔card, card↔group aur
+     group↔group teeno connect ho sakte hain (endpoint {cid,side}
+     mein cid card ka id bhi ho sakta hai aur group ka bhi)
+   • Node move/resize par auto-reroute
    • Line par click → koi popup nahi :
        - wahin par inline text cursor (input) — line ka text
          wahin likho jahan cursor hai
@@ -158,16 +161,19 @@
     lineInput.focus();
   }
 
-  /* ---------- geometry ---------- */
-  function cardById(id) {
-    var c = null;
-    canvas.cards.forEach(function (x) { if (x.id === id) c = x; });
-    return c;
+  /* ---------- geometry ----------
+     endpoint card bhi ho sakta hai aur group box bhi — dono ka
+     {x,y,w,h} same shape hai, isliye anchorPoint dono par chalta hai */
+  function nodeById(id) {
+    var n = null;
+    canvas.cards.forEach(function (x) { if (x.id === id) n = x; });
+    if (!n) (canvas.groups || []).forEach(function (x) { if (x.id === id) n = x; });
+    return n;
   }
 
   function points(line) {
-    var a = window.CanvasCards.anchorPoint(cardById(line.from.cid), line.from.side);
-    var b = window.CanvasCards.anchorPoint(cardById(line.to.cid), line.to.side);
+    var a = window.CanvasCards.anchorPoint(nodeById(line.from.cid), line.from.side);
+    var b = window.CanvasCards.anchorPoint(nodeById(line.to.cid), line.to.side);
     return { a: a, b: b };
   }
 
@@ -207,7 +213,7 @@
   function render() {
     E.svg.innerHTML = '';
     canvas.lines.forEach(function (line) {
-      if (!cardById(line.from.cid) || !cardById(line.to.cid)) return;
+      if (!nodeById(line.from.cid) || !nodeById(line.to.cid)) return;
       var pt = points(line);
       var cv = curveD(pt.a, pt.b);
       var color = effColor(line);
@@ -269,7 +275,7 @@
 
   function tempMove(w) {
     if (!tempPath || !tempFrom) return;
-    var a = window.CanvasCards.anchorPoint(cardById(tempFrom.cid), tempFrom.side);
+    var a = window.CanvasCards.anchorPoint(nodeById(tempFrom.cid), tempFrom.side);
     tempPath.setAttribute('d', curveD(a, { x: w.x, y: w.y, nx: 0, ny: 0 }).d);
   }
 

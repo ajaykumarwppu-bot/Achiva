@@ -16,6 +16,11 @@
                   card par chhota chip dikhta hai (DAILY / date / range);
                   goal feature inhi tags ko future mein use karega
    • 4 side anchors → curved lines (canvas-lines.js)
+   • Group boxes (virtual glass cards) par bhi wahi 4 anchors hote
+     hain (canvas-groups.js) — startConnect + anchorAtWorld cards
+     aur groups DONO ke liye shared hain : card↔group aur
+     group↔group lines banti hain (endpoint = {cid,side}, cid
+     card ka id bhi ho sakta hai aur group ka bhi)
    ================================================================ */
 
 (function () {
@@ -380,10 +385,12 @@
     window.addEventListener('pointerup', up);
   }
 
-  /* ---------- connect drag ---------- */
-  function startConnect(c, side, e) {
+  /* ---------- connect drag ----------
+     node = card YA group box (dono ka {id,x,y,w,h} same shape) —
+     groups ke anchors bhi yahin se connect drag shuru karte hain */
+  function startConnect(node, side, e) {
     if (E.readOnly()) return;
-    var from = { cid: c.id, side: side };
+    var from = { cid: node.id, side: side };
     window.CanvasLines.tempStart(from, E.toWorld(e.clientX, e.clientY));
     function mv(ev) {
       window.CanvasLines.tempMove(E.toWorld(ev.clientX, ev.clientY));
@@ -408,23 +415,35 @@
     window.addEventListener('pointerup', up);
   }
 
-  /* ---------- anchors math ---------- */
-  function anchorPoint(card, side) {
-    if (side === 'n') return { x: card.x + card.w / 2, y: card.y, nx: 0, ny: -1 };
-    if (side === 'e') return { x: card.x + card.w, y: card.y + card.h / 2, nx: 1, ny: 0 };
-    if (side === 's') return { x: card.x + card.w / 2, y: card.y + card.h, nx: 0, ny: 1 };
-    return { x: card.x, y: card.y + card.h / 2, nx: -1, ny: 0 };
+  /* ---------- anchors math (card + group dono ke liye — {x,y,w,h}) ---------- */
+  function anchorPoint(node, side) {
+    if (side === 'n') return { x: node.x + node.w / 2, y: node.y, nx: 0, ny: -1 };
+    if (side === 'e') return { x: node.x + node.w, y: node.y + node.h / 2, nx: 1, ny: 0 };
+    if (side === 's') return { x: node.x + node.w / 2, y: node.y + node.h, nx: 0, ny: 1 };
+    return { x: node.x, y: node.y + node.h / 2, nx: -1, ny: 0 };
   }
 
+  /* anchor dhundho — cards PEHLE (wo groups ke upar dikhte hain),
+     phir group boxes (virtual cards). Return {cid, side} — cid
+     card ka id bhi ho sakta hai aur group ka bhi. */
   function anchorAtWorld(w) {
     var thr = 16 / E.getT().s;
-    for (var i = 0; i < canvas.cards.length; i++) {
-      var c = canvas.cards[i];
-      var sides = ['n', 'e', 's', 'w'];
-      for (var j = 0; j < 4; j++) {
-        var p = anchorPoint(c, sides[j]);
+    var sides = ['n', 'e', 's', 'w'];
+    var i, j, p;
+    for (i = 0; i < canvas.cards.length; i++) {
+      for (j = 0; j < 4; j++) {
+        p = anchorPoint(canvas.cards[i], sides[j]);
         if (Math.abs(w.x - p.x) < thr && Math.abs(w.y - p.y) < thr) {
-          return { cid: c.id, side: sides[j] };
+          return { cid: canvas.cards[i].id, side: sides[j] };
+        }
+      }
+    }
+    var groups = canvas.groups || [];
+    for (i = 0; i < groups.length; i++) {
+      for (j = 0; j < 4; j++) {
+        p = anchorPoint(groups[i], sides[j]);
+        if (Math.abs(w.x - p.x) < thr && Math.abs(w.y - p.y) < thr) {
+          return { cid: groups[i].id, side: sides[j] };
         }
       }
     }
@@ -444,6 +463,7 @@
     anchorPoint: anchorPoint,
     anchorAtWorld: anchorAtWorld,
     cardById: cardById,
+    startConnect: startConnect,
     hideToolbar: hideToolbar,
     tagLabel: tagLabel,
     applyTag: applyTag,

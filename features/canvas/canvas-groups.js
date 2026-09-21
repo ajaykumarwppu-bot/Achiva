@@ -15,7 +15,14 @@
        - Color  : wahi shared color plate → glass par halka tint
        - Delete : do-click confirm; sirf box jata hai, cards rehte
    • se/e/s handles → box resize (cards apni jagah rehte hain)
+   • Box ke 4 side ANCHORS (n/e/s/w) — normal cards jaise hi :
+     anchor se drag karke line kisi card ya doosre group box tak
+     le jao → card↔group aur group↔group connection banta hai
+     (connect logic shared : CanvasCards.startConnect/anchorAtWorld)
+   • Group delete hone par usse judi saari lines bhi delete
    • Data : canvas.groups = [ {id,x,y,w,h,color,text} ]
+     lines ke endpoints {cid,side} mein cid group ka id bhi ho
+     sakta hai (canvas-lines.js dono arrays mein resolve karta hai)
    ================================================================ */
 
 (function () {
@@ -155,9 +162,14 @@
 
   function deleteGroup(g) {
     canvas.groups = canvas.groups.filter(function (x) { return x !== g; });
+    /* group se judi lines bhi hatao (endpoint cid = group id) */
+    canvas.lines = (canvas.lines || []).filter(function (l) {
+      return l.from.cid !== g.id && l.to.cid !== g.id;
+    });
     hideToolbar();
     E.commit();
     render();
+    E.rerenderLines();
   }
 
   /* ---------- inline text (box ki khali jagah mein) ---------- */
@@ -238,6 +250,27 @@
       hd.style.cssText = 'position:absolute;' + h[1] + ';width:12px;height:12px;border-radius:4px;' +
         'background:var(--tile-bg);border:1.5px solid var(--steel);touch-action:none';
       d.appendChild(hd);
+    });
+
+    /* 4 side anchors — group box bhi lines se connect hota hai
+       (card↔group, group↔group); connect drag cards wala shared hai */
+    [['n', 'top:-6px;left:50%;margin-left:-6px'],
+     ['e', 'right:-6px;top:50%;margin-top:-6px'],
+     ['s', 'bottom:-6px;left:50%;margin-left:-6px'],
+     ['w', 'left:-6px;top:50%;margin-top:-6px']].forEach(function (a) {
+      var an = el('div');
+      an.setAttribute('data-side', a[0]);
+      an.style.cssText = 'position:absolute;' + a[1] + ';width:12px;height:12px;border-radius:50%;' +
+        'background:var(--tile-bg);border:1.5px solid var(--steel);cursor:crosshair;touch-action:none';
+      an.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+        hideToolbar();
+        if (window.CanvasCards) {
+          window.CanvasCards.hideToolbar();
+          window.CanvasCards.startConnect(g, a[0], e);
+        }
+      });
+      d.appendChild(an);
     });
 
     d.addEventListener('pointerdown', function (e) {
@@ -326,6 +359,7 @@
       if (h === 'se' || h === 's') g.h = Math.max(60, Math.round(oh + dy));
       dEl.style.width = g.w + 'px';
       dEl.style.height = g.h + 'px';
+      E.rerenderLines();   /* group anchors se judi lines follow karein */
     }
     function up() {
       window.removeEventListener('pointermove', mv);
@@ -353,6 +387,7 @@
     render: render,
     cancelDrag: cancelDrag,
     hideToolbar: hideToolbar,
-    containedCards: containedCards
+    containedCards: containedCards,
+    deleteGroup: deleteGroup
   };
 })();

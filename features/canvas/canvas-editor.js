@@ -2,7 +2,8 @@
    CANVAS / CANVAS-EDITOR.JS  —  fullscreen canvas shell
    ----------------------------------------------------------------
    • Koi top header nahi — poori screen canvas
-   • Side buttons : upar right = Back + Settings ("Coming soon")
+   • Side buttons : upar right = Back + AI plan (BYOK, canvas-ai.js)
+                    + Settings ("Coming soon")
                     neeche right = Fit, Undo, Redo, Read-only
    • Infinite viewport : pan, pinch-zoom, wheel-zoom
    • Double-tap (do quick taps) khali jagah → naya card
@@ -29,6 +30,7 @@
   var ICON_UNDO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>';
   var ICON_REDO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>';
   var ICON_EYE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var ICON_AI = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8z"/><path d="M18.5 15l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z"/></svg>';
 
   var canvas = null;
   var readOnly = false;
@@ -68,7 +70,14 @@
       body.appendChild(el('div', 'empty', 'Coming soon<br>Canvas settings yahan jald add hongi.'));
     }, null);
   });
+  /* AI plan (BYOK) — canvas-ai.js; jahan bhi canvas khulta hai wahi button */
+  var aiBtn = toolBtn(ICON_AI, 'AI plan');
+  aiBtn.addEventListener('click', function () {
+    if (readOnly) return;
+    if (window.CanvasAI) window.CanvasAI.open();
+  });
   topTools.appendChild(backBtn);
+  topTools.appendChild(aiBtn);
   topTools.appendChild(setBtn);
 
   var fitBtn = toolBtn(ICON_FIT, 'Fit to screen');
@@ -289,7 +298,10 @@
     } else {
       var surface = (e.target === viewport || e.target === world);
       var inGroup = !!(e.target.closest && e.target.closest('[data-gid]'));
-      tapSurface = (surface || inGroup) && !readOnly && !isEditingTarget(e.target);
+      /* anchor (data-side) par LP-marquee / double-tap-create NAHI —
+         wo sirf connect-drag ke hain (card ho ya group box) */
+      var onAnchor = !!(e.target.getAttribute && e.target.getAttribute('data-side'));
+      tapSurface = (surface || inGroup) && !onAnchor && !readOnly && !isEditingTarget(e.target);
       if (surface) {
         panStart = { x: e.clientX, y: e.clientY, tx: t.x, ty: t.y };
       }
