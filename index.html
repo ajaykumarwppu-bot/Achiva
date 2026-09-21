@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>achiva</title>
+
+  <!-- style load order : foundation → layout → component → screen -->
+  <link rel="stylesheet" href="style/foundation.css">
+  <link rel="stylesheet" href="style/layout.css">
+  <link rel="stylesheet" href="style/component.css">
+  <link rel="stylesheet" href="style/screen.css">
+
+  <!-- theme pehle se laga do (paint se pehle) → dark mode par koi
+       "white flash" nahi. Pasand backend/settings.js save karti hai
+       (localStorage: achiva.prefs.v1) aur backup ke saath cloud par
+       bhi jaati hai. -->
+  <script>
+    (function () {
+      try {
+        var raw = window.localStorage.getItem('achiva.prefs.v1');
+        var p = raw ? JSON.parse(raw) : null;
+        if (p && p.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      } catch (e) { /* localStorage band ho to light theme hi rahega */ }
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- app shell (device frame) -->
+  <div class="device">
+    <div class="app" id="app" data-corner="br">
+
+      <!-- ======================================================
+           GLOBAL HEADER — poore app mein hamesha visible rehta hai
+           (brand lockup + settings gear + date chip)
+           koi own background nahi — app ka lined background hi dikhta hai
+      ======================================================= -->
+      <div class="home-top" style="position:absolute;top:0;left:0;right:0;z-index:35">
+        <div class="brand">
+          <span class="brand-mark">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </span>
+          <div>
+            <div class="brand-name">ACHIVA</div>
+            <div class="brand-sub">Study OS · v1.0</div>
+          </div>
+        </div>
+        <div class="hd-right">
+          <!-- SETTINGS button (pehle yahan theme toggle tha).
+               Gear ka SVG backend/settings.js daalta hai — wahi purani
+               .theme-btn class use hoti hai, isliye CSS ko chua nahi gaya.
+               Theme toggle ab Settings sheet ke andar hai. -->
+          <button class="theme-btn" id="settingsBtn" type="button" aria-label="Settings"></button>
+          <span class="date-chip" id="dateChip"></span>
+        </div>
+      </div>
+
+      <!-- screens (subjects / chapters / chapter view / books / features)
+           feature files aur neeche wale script se banti hain -->
+
+      <!-- ======================================================
+           FLOATING NAV BUTTON (FAB)
+           collapsed = circle (pulse-wave ring ke saath),
+           expanded  = options column + row + X,
+           long-hold drag → nearest corner par snap
+      ======================================================= -->
+      <div class="cmarks"><i class="c-tl"></i><i class="c-tr"></i><i class="c-bl"></i><i class="c-br"></i></div>
+
+      <button class="fab" id="fab" type="button" aria-label="Navigation menu">
+        <span class="ln ln1"></span><span class="ln ln2"></span><span class="ln ln3"></span>
+      </button>
+
+      <div id="fabCol" style="position:absolute;z-index:55;visibility:hidden;opacity:0;transform:scale(.6);transition:transform .32s cubic-bezier(.34,1.25,.4,1),opacity .2s;display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:22px;background:var(--menu-bg);border:1px solid var(--line);box-shadow:0 26px 54px -22px rgba(20,23,28,.55),inset 0 1px 0 var(--hl-soft);pointer-events:none">
+          <button class="mitem" data-key="dash" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">DASH</span>
+          </button>
+          <button class="mitem" data-key="cal" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">CAL</span>
+          </button>
+          <button class="mitem" data-key="subs" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">SUBS</span>
+          </button>
+          <button class="mitem" data-key="time" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">TIME</span>
+          </button>
+      </div>
+      <div id="fabRow" style="position:absolute;z-index:55;visibility:hidden;opacity:0;transform:scale(.6);transition:transform .32s cubic-bezier(.34,1.25,.4,1),opacity .2s;display:flex;gap:8px;padding:10px;border-radius:22px;background:var(--menu-bg);border:1px solid var(--line);box-shadow:0 26px 54px -22px rgba(20,23,28,.55),inset 0 1px 0 var(--hl-soft);pointer-events:none">
+          <button class="mitem" data-key="tasks" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12l3 3 5-6"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">TASKS</span>
+          </button>
+          <button class="mitem" data-key="habits" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">HABITS</span>
+          </button>
+          <button class="mitem" data-key="goals" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">GOALS</span>
+          </button>
+          <button class="mitem" data-key="draw" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">DRAW</span>
+          </button>
+      </div>
+
+      <!-- ==============================================
+           LOGIN GATE (compulsory email login)
+           ye div sirf ek placeholder hai — andar ka poora form
+           backend/auth.js banata hai. z-index 400 = sabse upar
+           (header 35 · FAB 55 · modals 95), isliye login ke bina
+           app ka koi hissa chhua nahi ja sakta.
+           Agar Firebase config nahi bhara hua to gate khud hi
+           "Login abhi band hai" dikha kar app kholne deta hai.
+      =============================================== -->
+      <div id="authGate" style="position:absolute;inset:0;z-index:400;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(12,14,18,.62);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);transition:opacity .22s ease">
+        <div style="font-size:12px;color:#e8ebef;text-align:center;line-height:1.8;padding:20px;border:1px solid rgba(255,255,255,.16);border-radius:20px;background:rgba(20,24,30,.82)">
+          Achiva khul raha hai...
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================
+       SCRIPTS (v3 — IndexedDB boot loader)
+       • core/storage.js pehle (static) : AppStorage banata hai
+         aur IndexedDB se memory-cache bharne ki open() shuru.
+       • Loader niche : open() + window "load" ka wait karke
+         baaki SAARE scripts ko bilkul PURANE wale order mein
+         ek-ek karke inject karta hai.
+       Reason: kuch features (subject-store, canvas, goal-list,
+       good-list) parse hote hi AppStorage se state padhte hain —
+       unse pehle IDB cache ready hona zaroori hai. Firebase CDN
+       tags niche parser-blocking hain; loader "load" event ka
+       wait karta hai, isliye backend scripts hamesha firebase
+       ke BAAD chalenge (pehle jaisa hi order).
+  ======================================================= -->
+  <script src="core/storage.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      /* ORIGINAL load order — wahi jo pehle static tags tha */
+      var SRC = [
+        'core/ui.js',
+        'features/dashboard/dashboard.js',
+        'features/dashboard/dashboard-today.js',
+        'features/subject tracker/subject-store.js',
+        'features/subject tracker/study-timer.js',
+        'features/subject tracker/chapter-progress.js',
+        'features/subject tracker/subject-screens.js',
+        'features/subject tracker/exam-widget.js',
+        'features/subject tracker/list.js',
+        'features/subject tracker/basics.js',
+        'features/subject tracker/sources.js',
+        'features/subject tracker/sources-detail.js',
+        'features/subject tracker/topic.js',
+        'features/subject tracker/rivision.js',
+        'features/subject tracker/test.js',
+        'features/subject tracker/doubt.js',
+        'features/subject tracker/error.js',
+        'features/canvas/canvas.js',
+        'features/canvas/canvas-editor.js',
+        'features/canvas/canvas-cards.js',
+        'features/canvas/canvas-lines.js',
+        'features/canvas/canvas-groups.js',
+        'features/timer/timer-bridge.js',
+        'features/timer/timer.js',
+        'features/goals/goal-list.js',
+        'features/goals/goal-heat.js',
+        'features/goals/goal-task.js',
+        'features/goals/goal-detail.js',
+        'features/habit/GoodSystem.js',
+        'features/habit/good-list.js',
+        'features/habit/good-detail.js',
+        'features/habit/good-system-scenarios.js',
+        'backend/firebase-config.js',
+        'backend/cloud.js',
+        'backend/auth.js',
+        'backend/backup.js',
+        'backend/settings.js',
+        'core/app-shell.js',
+        'core/boot.js'
+      ];
+      var storageReady = false, docReady = false, started = false;
+      function loadNext(i) {
+        if (i >= SRC.length) return;
+        var s = document.createElement('script');
+        s.src = SRC[i];
+        s.onload = function () { loadNext(i + 1); };
+        /* ek file 404 ho to baaki app na ruke (pehle bhi parser aage badhta tha) */
+        s.onerror = function () { loadNext(i + 1); };
+        document.head.appendChild(s);
+      }
+      function tryStart() {
+        if (started || !storageReady || !docReady) return;
+        started = true;
+        window.clearTimeout(failsafe);
+        loadNext(0);
+      }
+      /* Failsafe: open() atak jaye to 6s baad storage-ready maan lo —
+         AppStorage ka localStorage fallback pehle se seeded hota hai,
+         app LS mode mein chal padegi. */
+      var failsafe = window.setTimeout(function () { storageReady = true; tryStart(); }, 6000);
+      if (window.AppStorage && window.AppStorage.open) {
+        window.AppStorage.open().then(function () { storageReady = true; tryStart(); },
+                                      function () { storageReady = true; tryStart(); });
+      } else { storageReady = true; }
+      if (document.readyState === 'complete') { docReady = true; }
+      else window.addEventListener('load', function () { docReady = true; tryStart(); });
+      tryStart();
+    })();
+  </script>
+
+  <!-- ==============================================
+       BACKEND : Firebase (login + manual backup)
+       • Firebase compat SDK (CDN) — window.firebase banata hai
+       • phir hamari 5 backend files (order zaroori hai)
+       Config na bhari ho to ye sab chup-chaap band rehta hai,
+       app pehle jaisa chalti hai (gate par message dikhta hai).
+  =============================================== -->
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"></script>
+  <!-- backend ki 5 local files (firebase-config → cloud → auth →
+       backup → settings) ab upar wale loader ke SRC manifest mein
+       hain — order bilkul same, firebase CDN ke baad. -->
+
+  <!-- header ka own chhota sa script : sirf live date
+       (theme toggle ab Settings sheet mein hai → backend/settings.js) -->
+  <script>
+    (function () {
+      'use strict';
+      /* date chip : "TUE · 15 SEPT" format */
+      var d = new Date();
+      var days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+      var months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEPT', 'OCT', 'NOV', 'DEC'];
+      document.getElementById('dateChip').textContent =
+        days[d.getDay()] + ' · ' + d.getDate() + ' ' + months[d.getMonth()];
+    })();
+  </script>
+
+  <!-- FLOATING NAV BUTTON + coming-soon screens : code ab
+       core/app-shell.js mein hai (loader manifest, backend ke baad).
+       Logic bilkul unchanged — sirf inline se file mein gaya. -->
+
+  <!-- BACKEND BOOT : code ab core/boot.js mein hai (loader manifest
+       ki aakhri entry). Logic bilkul unchanged. -->
+</body>
+</html>
