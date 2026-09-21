@@ -101,10 +101,16 @@
       });
   }
 
-  /* path → {ok:true, data:{...}} ya {ok:true, data:null} (doc nahi hai) */
-  function readDoc(path) {
+  /* path → {ok:true, data:{...}} ya {ok:true, data:null} (doc nahi hai)
+     opts.server = true → SIRF server se padho (Firestore local cache se nahi).
+     Restore jaise critical reads mein ye zaroori hai: enablePersistence ON
+     hone par default .get() offline mein purana cached data CHUP-CHAAP de
+     deta hai — user ko lagta hai restore ho gaya, asal mein stale data
+     apply hua hota hai (deleted cheezein wapas aa jati hain). */
+  function readDoc(path, opts) {
     if (!ready()) return Promise.resolve({ ok: false, code: state, message: message(null) });
-    return ref(path).get()
+    var getOpts = (opts && opts.server) ? { source: 'server' } : undefined;
+    return ref(path).get(getOpts)
       .then(function (snap) {
         return { ok: true, data: snap.exists ? snap.data() : null };
       })
@@ -114,10 +120,12 @@
       });
   }
 
-  /* collectionPath → {ok:true, docs:[{id, data}]} */
-  function readDocs(collectionPath) {
+  /* collectionPath → {ok:true, docs:[{id, data}]}
+     opts.server = true → sirf server se (restore ke liye — stale cache nahi) */
+  function readDocs(collectionPath, opts) {
     if (!ready()) return Promise.resolve({ ok: false, code: state, message: message(null) });
-    return db.collection(collectionPath).get()
+    var getOpts = (opts && opts.server) ? { source: 'server' } : undefined;
+    return db.collection(collectionPath).get(getOpts)
       .then(function (qs) {
         var out = [];
         qs.forEach(function (snap) { out.push({ id: snap.id, data: snap.data() }); });

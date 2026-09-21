@@ -350,6 +350,22 @@
       cloudLine.textContent = r.count
         ? 'Cloud par ' + r.count + ' hisse saved · ' + (r.lastBackupAt ? B.agoText(r.lastBackupAt) : '—')
         : 'Cloud par abhi koi backup nahi hai';
+      /* STALE-PART WARNING: kisi hisse ka savedAt profile ke lastBackupAt
+         se kaafi purana hai → matlab us hisse ka pichla backup FAIL hua
+         tha (data bada / net giri). User ko saaf dikhana zaroori hai —
+         isi se "restore par delete nahi hota" wala confusion hota tha. */
+      if (r.count && r.lastBackupAt) {
+        var stale = (r.items || []).filter(function (i) {
+          return i.savedAt && i.savedAt < r.lastBackupAt - 60000;
+        });
+        if (stale.length) {
+          var warn = smallNote('⚠ Cloud par PURANA hissa: ' +
+            stale.map(function (i) { return i.label + ' (' + B.agoText(i.savedAt) + ')'; }).join(', ') +
+            '. Inka last backup fail hua tha — "Backup now" dabakar message padhein (data bada ho sakta hai).');
+          warn.style.color = '#a06a00';
+          stBackup.appendChild(warn);
+        }
+      }
     });
   }
 

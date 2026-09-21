@@ -8,6 +8,11 @@
      • Backup SIRF user ke button dabane par hota hai (Settings →
        "Backup now") — app khud kabhi upload nahi karti.
      • Restore bhi sirf user ki haan se hota hai.
+     • SILENT-PARTIAL-BACKUP FIX: koi ek doc fail hone par profile
+       doc (lastBackupAt) update NAHI hota aur message mein hisse ka
+       naam + wajah dikhti hai. Limit se bade docs gzip ('GZ1:...')
+       hokar jate hain; restore server-fresh (source:'server') hota
+       hai — stale Firestore cache se kabhi nahi.
      • Login ke baad ek baar "firstRunFlow" : cloud aur local data
        dekh kar 3 mein se ek sawaal poochta hai (kabhi auto nahi).
      • Settings panel ko status dena: lastBackupAt, cloudSummary,
@@ -61,6 +66,118 @@
     return (window.AchivaAuth && window.AchivaAuth.session) ? window.AchivaAuth.session() : null;
   }
 
+  /* ================================================================
+     SIZE LIMIT + GZIP COMPRESSION
+     ----------------------------------------------------------------
+     firestore.rules mein hai: value.size() <= 900000  (characters)
+     aur Firestore ka hard limit ~1 MiB per doc.
+     Pehle ka bug: data bada hone par EK doc chup-chaap reject ho
+     jata tha, baaki docs + profile (lastBackupAt) succeed ho jate
+     the → Settings "sab fresh" dikhata, par cloud par wo hissa
+     PURANA reh jata → restore par deletions wapas nahi hoti thin.
+     Ab:
+       • limit se bada data gzip karke 'GZ1:<base64>' string ban kar
+         jata hai (JSON aksar 5-10x chhota ho jata hai).
+       • chhote docs PLAIN rehte hain — purane backups aur purane
+         (cached) app versions dono compatible rehte hain.
+       • compression ke baad bhi na fit ho → backup SAAF fail hota
+         hai, hisse ka naam + size message mein.
+     ================================================================ */
+  var RULE_CHAR_LIMIT = 900000;         /* firestore.rules wali limit */
+  var HARD_BYTE_LIMIT = 1000000;        /* Firestore ~1MiB (safe side) */
+  var GZ_PREFIX = 'GZ1:';
+
+  function byteLen(s) {
+    try {
+      if (window.TextEncoder) return new window.TextEncoder().encode(s).length;
+    } catch (e) { /* ignore */ }
+    return s.length;
+  }
+
+  function fits(s) {
+    return typeof s === 'string' && s.length <= RULE_CHAR_LIMIT && byteLen(s) <= HARD_BYTE_LIMIT;
+  }
+
+  function mb(n) { return (n / 1048576).toFixed(2) + ' MB'; }
+
+  function streamToBytes(readable) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var reader = readable.getReader();
+        var chunks = [], total = 0;
+        var pump = function () {
+          reader.read().then(function (o) {
+            if (!o || o.done) {
+              var out = new Uint8Array(total), off = 0;
+              chunks.forEach(function (c) { out.set(c, off); off += c.length; });
+              resolve(out);
+              return;
+            }
+            if (o.value) { chunks.push(o.value); total += o.value.length; }
+            pump();
+          }, reject);
+        };
+        pump();
+      } catch (e) { reject(e); }
+    });
+  }
+
+  function bytesToStream(u8) {
+    var RS = window.ReadableStream;
+    if (typeof RS !== 'function') return null;
+    return new RS({ start: function (c) { c.enqueue(u8); c.close(); } });
+  }
+
+  function bytesToB64(u8) {
+    var CH = 0x8000, s = '';
+    for (var i = 0; i < u8.length; i += CH) {
+      s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+    }
+    return window.btoa(s);
+  }
+
+  function b64ToBytes(b64) {
+    var s = window.atob(b64);
+    var u8 = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+    return u8;
+  }
+
+  /* str → Promise<'GZ1:...'|null>   (null = compression available nahi / fail) */
+  function gzCompress(str) {
+    try {
+      if (typeof window.CompressionStream !== 'function' || !window.TextEncoder) return Promise.resolve(null);
+      var src = bytesToStream(new window.TextEncoder().encode(str));
+      if (!src) return Promise.resolve(null);
+      return streamToBytes(src.pipeThrough(new window.CompressionStream('gzip')))
+        .then(function (u8) { return GZ_PREFIX + bytesToB64(u8); })
+        .catch(function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+
+  /* 'GZ1:...' → Promise<str|null> */
+  function gzDecompress(payload) {
+    try {
+      if (typeof window.DecompressionStream !== 'function' || !window.TextDecoder) return Promise.resolve(null);
+      var src = bytesToStream(b64ToBytes(String(payload).slice(GZ_PREFIX.length)));
+      if (!src) return Promise.resolve(null);
+      return streamToBytes(src.pipeThrough(new window.DecompressionStream('gzip')))
+        .then(function (u8) { return new window.TextDecoder('utf-8').decode(u8); })
+        .catch(function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+
+  function isGz(v) { return typeof v === 'string' && v.indexOf(GZ_PREFIX) === 0; }
+
+  /* doc ke raw JSON string se upload-payload banao (bada ho to gzip) */
+  function makePayload(raw) {
+    if (fits(raw)) return Promise.resolve({ payload: raw });
+    return gzCompress(raw).then(function (gz) {
+      if (gz && fits(gz)) return { payload: gz };
+      return { tooBig: true, bytes: byteLen(raw), gzBytes: gz ? byteLen(gz) : null };
+    });
+  }
+
   /* ---------- local summary ---------- */
   function localSummary() {
     var out = [];
@@ -105,7 +222,14 @@
     return n || null;
   }
 
-  /* ---------- BACKUP (upload) ---------- */
+  /* ---------- BACKUP (upload) ----------
+     Naya behaviour (silent-partial-backup bug fix):
+       1. har doc ka payload bano (limit se bada → gzip 'GZ1:...').
+       2. SAARE data docs cloud par likho.
+       3. profile doc (lastBackupAt) SIRF tab jab sab succeed ho —
+          warna cloud "fresh" dikhta tha jabki ek hissa stale tha,
+          aur restore par deletions apply nahi hoti thin.
+       4. koi bhi hissa fail → ok:false + hisse ka NAAM + wajah.  */
   function push(s) {
     s = s || sess();
     if (!s || !s.uid) return Promise.resolve({ ok: false, code: 'no-account', message: 'Pehle login karein, phir backup lein.' });
@@ -114,50 +238,90 @@
 
     flushPrefs();
     var now = Date.now();
-    var jobs = [];
+    var toSend = [];      /* [{d, payload}] */
+    var tooBig = [];      /* [{label, bytes, gzBytes}] */
 
-    DOCS.forEach(function (d) {
+    var prep = DOCS.map(function (d) {
       var raw = lsGet(d.key);
-      if (raw === null || raw === undefined) return;   /* jo key hi nahi hai, wo doc nahi banega */
-      jobs.push(CLOUD.saveDoc('users/' + s.uid + '/data/' + d.docId, {
-        v: 1,
-        savedAt: now,
-        value: raw                    /* JSON string — byte-exact round trip */
-      }));
+      if (raw === null || raw === undefined) return Promise.resolve();  /* jo key hi nahi hai, wo doc nahi banega */
+      return makePayload(raw).then(function (p) {
+        if (p.tooBig) tooBig.push({ label: d.label, bytes: p.bytes, gzBytes: p.gzBytes });
+        else toSend.push({ d: d, payload: p.payload });
+      });
     });
 
-    /* profile doc = users/<uid> (2 segments = valid DocumentReference).
-       Pehle 'users/<uid>/profile' (3 segments) tha jo Firestore mein invalid hai
-       aur logged-in user par backup/settings ko crash karta tha. */
-    jobs.push(CLOUD.saveDoc('users/' + s.uid, {
-      app: 'achiva',
-      v: 1,
-      email: s.email || '',
-      uid: s.uid,
-      createdAt: now,
-      lastBackupAt: now
-    }));
+    return Promise.all(prep).then(function () {
+      var jobs = toSend.map(function (x) {
+        return CLOUD.saveDoc('users/' + s.uid + '/data/' + x.d.docId, {
+          v: 1,
+          savedAt: now,
+          value: x.payload              /* JSON string (ya GZ1:...) — byte-exact round trip */
+        }).then(function (r) { return { x: x, r: r }; });
+      });
 
-    return Promise.all(jobs).then(function (res) {
-      var bad = null;
-      res.forEach(function (r) { if (!r.ok && !bad) bad = r; });
-      if (bad) return { ok: false, code: bad.code, message: bad.message || msg(bad) };
-      lsSet('achiva.lastBackupAt', String(now));
-      return { ok: true, at: now, docs: res.length };
+      return Promise.all(jobs).then(function (res) {
+        var writeFails = [];
+        res.forEach(function (rr) {
+          if (!rr.r.ok) writeFails.push({ label: rr.x.d.label, message: rr.r.message || msg(rr.r) });
+        });
+
+        if (tooBig.length || writeFails.length) {
+          /* ADHURA backup — profile/lastBackupAt update NAHI hoga */
+          var parts = [];
+          tooBig.forEach(function (t) {
+            parts.push('"' + t.label + '" ka data bahut bada hai (' + mb(t.bytes) +
+              (t.gzBytes ? '; compression ke baad bhi ' + mb(t.gzBytes) : '') +
+              ' — limit ~0.9 MB)');
+          });
+          writeFails.forEach(function (w) { parts.push('"' + w.label + '" save nahi hua: ' + w.message); });
+          var okN = toSend.length - writeFails.length;
+          return {
+            ok: false,
+            code: tooBig.length ? 'too-big' : 'partial',
+            failedParts: parts,
+            message: 'Backup ADHURA hai — ' + parts.join('; ') + '. ' +
+              (okN > 0 ? okN + ' hisse cloud par chale gaye, par ' : '') +
+              '"Last backup" time JAAN-BOOJH kar update nahi hua taaki saaf pata rahe ki backup adhura hai.'
+          };
+        }
+
+        /* saare data docs succeed → ab profile doc (lastBackupAt).
+           Pehle 'users/<uid>/profile' (3 segments) tha jo Firestore mein
+           invalid hai — ab 2 segments = valid DocumentReference. */
+        return CLOUD.saveDoc('users/' + s.uid, {
+          app: 'achiva',
+          v: 1,
+          email: s.email || '',
+          uid: s.uid,
+          createdAt: now,
+          lastBackupAt: now
+        }).then(function (pr) {
+          if (!pr.ok) {
+            return { ok: false, code: pr.code, message: 'Data docs chale gaye, par profile doc save nahi hua: ' + (pr.message || msg(pr)) + ' — dobara koshish karein.' };
+          }
+          lsSet('achiva.lastBackupAt', String(now));
+          return { ok: true, at: now, docs: toSend.length + 1 };
+        });
+      });
     }).catch(function (e) {
       return { ok: false, code: 'unknown', message: msg(e) };
     });
   }
 
-  /* ---------- cloud se poora data padho ---------- */
-  function fetchCloud(s) {
+  /* ---------- cloud se poora data padho ----------
+     opts.server = true → SIRF server se (restore ke liye zaroori —
+     Firestore offline-cache ON hai, aur default .get() net na milne
+     par PURANA cached data chup-chaap de deta hai; usse "restore ho
+     gaya" dikhta tha par delete ki hui cheezein wapas aa jati thin). */
+  function fetchCloud(s, opts) {
     s = s || sess();
     if (!s || !s.uid) return Promise.resolve({ ok: false, code: 'no-account', message: 'Pehle login karein.' });
     if (!hasCloud()) return Promise.resolve({ ok: false, code: 'no-cloud', message: 'Cloud ready nahi hai.' });
 
+    var rd = (opts && opts.server) ? { server: true } : undefined;
     return Promise.all([
-      CLOUD.readDoc('users/' + s.uid),          /* profile doc = users/<uid> (2 segments, valid) */
-      CLOUD.readDocs('users/' + s.uid + '/data')
+      CLOUD.readDoc('users/' + s.uid, rd),          /* profile doc = users/<uid> (2 segments, valid) */
+      CLOUD.readDocs('users/' + s.uid + '/data', rd)
     ]).then(function (r) {
       var prof = r[0], docsRes = r[1];
       if (!prof.ok) return { ok: false, code: prof.code, message: prof.message || msg(prof) };
@@ -238,23 +402,50 @@
     if (s.offline) return Promise.resolve({ ok: false, code: 'offline', message: 'Offline mode mein restore nahi ho sakta.' });
     if (!hasCloud()) return Promise.resolve({ ok: false, code: 'no-cloud', message: 'Cloud ready nahi hai.' });
 
-    return fetchCloud(s).then(function (r) {
-      if (!r.ok) return r;
+    return fetchCloud(s, { server: true }).then(function (r) {
+      if (!r.ok) {
+        /* server tak pahunch nahi hui → cache se restore NAHI karenge
+           (stale cache = deleted cheezein wapas aane ka dusra zariya tha) */
+        if (r.code === 'unavailable' || /unavailable|offline|network|fetch/i.test(r.message || '')) {
+          return {
+            ok: false, code: 'server-unreachable',
+            message: 'Restore ke liye internet zaroori hai — data SERVER se padha jata hai (purana cache use nahi hota, warna delete ki hui cheezein wapas aa sakti hain). Net check karke dobara karein.'
+          };
+        }
+        return r;
+      }
       if (!r.items.length) {
         return { ok: false, code: 'empty', message: 'Cloud par abhi koi backup nahi mila. Pehle "Backup now" dabayein.' };
       }
-      var n = applyItems(r.items.map(function (i) { return { docId: i.docId, key: keyOf(i.docId), value: i.value }; }));
-      /* theme turant lagao (reload se pehle bhi sahi dikhe) */
-      try {
-        if (window.AchivaSettings && window.AchivaSettings.applyThemeFromStorage) {
-          window.AchivaSettings.applyThemeFromStorage();
+      /* compressed (GZ1:...) values ko kholo, phir apply */
+      return Promise.all(r.items.map(function (i) {
+        if (!isGz(i.value)) {
+          return { docId: i.docId, key: keyOf(i.docId), value: i.value };
         }
-      } catch (e) { /* ignore */ }
-      if (r.lastBackupAt) lsSet('achiva.lastBackupAt', String(r.lastBackupAt));
-      if (opts.reload !== false) {
-        window.setTimeout(doReload, 350);
-      }
-      return { ok: true, count: n, at: r.lastBackupAt };
+        return gzDecompress(i.value).then(function (v) {
+          return { docId: i.docId, key: keyOf(i.docId), value: v, bad: (v === null || v === undefined) };
+        });
+      })).then(function (decoded) {
+        var bad = decoded.filter(function (x) { return x.bad; });
+        var n = applyItems(decoded.filter(function (x) { return !x.bad; }));
+        if (bad.length) {
+          return {
+            ok: false, count: n, code: 'decode',
+            message: 'Backup ke ' + bad.length + ' hisse (compressed) is browser mein khule nahi — app ka naya version load karein (hard refresh) phir dobara restore karein.'
+          };
+        }
+        /* theme turant lagao (reload se pehle bhi sahi dikhe) */
+        try {
+          if (window.AchivaSettings && window.AchivaSettings.applyThemeFromStorage) {
+            window.AchivaSettings.applyThemeFromStorage();
+          }
+        } catch (e) { /* ignore */ }
+        if (r.lastBackupAt) lsSet('achiva.lastBackupAt', String(r.lastBackupAt));
+        if (opts.reload !== false) {
+          window.setTimeout(doReload, 350);
+        }
+        return { ok: true, count: n, at: r.lastBackupAt };
+      });
     });
   }
 
@@ -462,7 +653,7 @@
     setStat('Backup ho raha hai...');
     push(s).then(function (r) {
       if (r.ok) setStat('Backup ho gaya ✔ ' + fmtTime(r.at) + ' · ' + r.docs + ' hisse cloud par.');
-      else setStat('Backup fail: ' + (r.message || msg(r)));
+      else setStat(r.message ? ('⚠ ' + r.message) : ('Backup fail: ' + msg(r)));
       try { window.AchivaSettings.refreshBackup(); } catch (e) { /* ignore */ }
     });
   }
@@ -503,6 +694,16 @@
     fmtTime: fmtTime,
     agoText: agoText,
     reload: reload,
-    clearLastBackup: function () { lsDel('achiva.lastBackupAt'); }
+    clearLastBackup: function () { lsDel('achiva.lastBackupAt'); },
+    /* compression internals — tests/debug ke liye */
+    _gz: {
+      PREFIX: GZ_PREFIX,
+      RULE_CHAR_LIMIT: RULE_CHAR_LIMIT,
+      compress: gzCompress,
+      decompress: gzDecompress,
+      fits: fits,
+      byteLen: byteLen,
+      isGz: isGz
+    }
   };
 })();
