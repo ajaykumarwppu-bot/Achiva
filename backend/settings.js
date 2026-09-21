@@ -66,8 +66,19 @@
   /* ================================================================
      THEME (prefs ke saath save)
   ================================================================ */
-  function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
-  function lsSet(k, v) { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+  /* IndexedDB v3: prefs AppStorage ke zariye padho/likho — wo cache +
+     IDB + localStorage (dual-write) sab update karta hai, isliye
+     index.html ka head theme-script (direct LS read) bhi sync rehta
+     hai aur backup mein bhi fresh prefs jaate hain. AppStorage na
+     mile (test etc.) to purana direct-LS raasta. */
+  function lsGet(k) {
+    if (window.AppStorage && window.AppStorage.rawGet) return window.AppStorage.rawGet(k);
+    try { return window.localStorage.getItem(k); } catch (e) { return null; }
+  }
+  function lsSet(k, v) {
+    if (window.AppStorage && window.AppStorage.rawSet) return window.AppStorage.rawSet(k, v);
+    try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; }
+  }
 
   function readPrefs() {
     var raw = lsGet(PREFS_KEY);

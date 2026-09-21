@@ -416,12 +416,24 @@
     user = u;
     /* per-account local data : namespace set + legacy adopt.
        Agar stored namespace is uid se alag thi (bina sign-out account badla)
-       to ek baar reload karo taaki features sahi account ka data padhein. */
+       to ek baar reload karo taaki features sahi account ka data padhein.
+       IndexedDB v3: reload se PEHLE flush() — namespace + adoptLegacy ke
+       pending IDB writes commit ho jayein, warna reload par data adhura. */
     if (window.AppStorage) {
       var prev = window.AppStorage.ns();
       window.AppStorage.setNamespace(u.uid);
       window.AppStorage.adoptLegacy();
-      if (prev !== u.uid) { window.location.reload(); return; }
+      if (prev !== u.uid) {
+        var done = false;
+        var go = function () { if (!done) { done = true; window.location.reload(); } };
+        if (window.AppStorage.flush) {
+          window.AppStorage.flush().then(go, go);
+          window.setTimeout(go, 2500);   /* failsafe */
+        } else {
+          go();
+        }
+        return;
+      }
     }
     lsDel(OFFLINE_KEY);
     setAccount(u);

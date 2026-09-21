@@ -2,9 +2,9 @@
    BACKEND / BACKUP.JS — manual backup + restore (koi auto-backup nahi)
    ----------------------------------------------------------------
    Responsibility:
-     • App ka poora data 6 localStorage keys mein hai. Inhe 6 alag
-       Firestore docs mein JSON *string* ki tarah save karna, taaki
-       restore par data byte-to-byte wapas mile.
+     • App ka poora data 8 localStorage keys mein hai (+ prefs). Inhe
+       alag-alag Firestore docs mein JSON *string* ki tarah save karna,
+       taaki restore par data byte-to-byte wapas mile.
      • Backup SIRF user ke button dabane par hota hai (Settings →
        "Backup now") — app khud kabhi upload nahi karti.
      • Restore bhi sirf user ki haan se hota hai.
@@ -35,6 +35,8 @@
     { docId: 'timerManual',    key: 'achiva.timer.manual.v1',     label: 'Manual time entries', main: true },
     { docId: 'canvasColors',   key: 'achiva.canvas.savedColors',  label: 'Canvas colours',      main: false },
     { docId: 'goals',          key: 'achiva.goals.v1',            label: 'Goals + sessions',    main: true },
+    { docId: 'goodHabits',     key: 'achiva.goodHabits.v1',       label: 'Good habits',         main: true },
+    { docId: 'exams',          key: 'achiva.exams.v1',            label: 'Exams (subject widget)', main: true },
     { docId: 'prefs',          key: 'achiva.prefs.v1',            label: 'App settings',        main: false }
   ];
 
@@ -207,11 +209,21 @@
   /* app ko dobara load karo.
      Export ke zariye call hota hai taaki automated test mein ise
      count karne wale function se badla ja sake (production mein
-     ye bilkul window.location.reload() hi karta hai). */
+     ye bilkul window.location.reload() hi karta hai).
+     IndexedDB v3: reload se PEHLE AppStorage.flush() — pending
+     write-behind writes commit ho jayein, warna restore/backup
+     ke baad reload par data loss ho sakta hai. */
   function reload() { window.location.reload(); }
   function doReload() {
     var f = (window.AchivaBackup && window.AchivaBackup.reload) || reload;
-    f();
+    var done = false;
+    var go = function () { if (!done) { done = true; f(); } };
+    if (window.AppStorage && window.AppStorage.flush) {
+      window.AppStorage.flush().then(go, go);
+      window.setTimeout(go, 2500);   /* failsafe: flush atke to bhi reload ho */
+    } else {
+      go();
+    }
   }
 
   function keyOf(docId) {

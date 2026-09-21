@@ -380,10 +380,20 @@
     tt.style.cssText = 'flex:1;min-width:0;font-family:var(--f-disp);font-size:16px;font-weight:700;' +
       'color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
     head.appendChild(tt);
-    var keb = UI.miniBtn(UI.icons.kebab, 'Edit habit');
+    /* kebab : Edit + Delete (do-click confirm) popover — direct edit NAHI */
+    var keb = UI.miniBtn(UI.icons.kebab, 'Edit or delete');
     keb.style.flex = 'none';
-    keb.addEventListener('click', function () { window.GoodList.openAddModal(h); });
+    head.style.position = 'relative';
+    var pop = UI.makeKebabPop(
+      function () { window.GoodList.openAddModal(h); },        /* Edit → edit modal */
+      function () {                                           /* Delete (confirm ke baad) */
+        window.GoodList.removeHabit(h.id);
+        G().openList();
+      }
+    );
+    keb.addEventListener('click', function (e) { e.stopPropagation(); UI.togglePop(pop); });
     head.appendChild(keb);
+    head.appendChild(pop);
     scroll.appendChild(head);
 
     /* two boxes */

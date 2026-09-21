@@ -48,6 +48,10 @@
     persist();
     return o;
   }
+  function removeHabit(id) {
+    data.habits = data.habits.filter(function (h) { return h.id !== id; });
+    persist();
+  }
   function repsOn(h, date) {
     var l = (h.logs || {})[date];
     return l ? (l.done || 0) : 0;
@@ -346,7 +350,7 @@
 
   window.GoodList = {
     open: open, openList: openList, openDetail: openDetail,
-    all: all, get: get, addHabit: addHabit, addRep: addRep,
+    all: all, get: get, addHabit: addHabit, removeHabit: removeHabit, addRep: addRep,
     repsOn: repsOn, dayDone: dayDone, goodStreak: goodStreak, bestStreak: bestStreak,
     openAddModal: openAddModal
   };
