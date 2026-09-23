@@ -200,6 +200,10 @@
         } else if (key === 'dash') {
           /* DASH = asli Dashboard (features/dashboard/) */
           if (window.Dashboard) window.Dashboard.open();
+        } else if (key === 'tasks') {
+          /* TASKS = extra tasks feature (features/task/task.js) */
+          if (window.TaskFeature) window.TaskFeature.open();
+          else B.show(FEATURE_SCREENS[key], true);
         } else {
           B.show(FEATURE_SCREENS[key], true);
         }

@@ -4,7 +4,22 @@
    Countdown + stopwatch (native TimerService + browser fallback),
    timer-complete alarm (WebAudio beep + in-app modal), aur
    window.AchivaStudySave native save-hook.
-   ================================================================ */
+
+   TIMER-SAVE FIXES (Batch 41):
+     • RUNNING-STATE PERSISTENCE (Bug B): chalta hua timer + context
+       'achiva.timer.running.v1' mein persist hota hai — page reload /
+       tab-discard / app-restart ke baad session resume ya complete-save
+       hota hai (pehle: memory-only → sab lost).
+     • BOOT/VISIBILITY RECONCILE (Bug A): app khulte hi aur foreground
+       par lautne par native ki finished/pending/zombie session check
+       hoti hai aur save hoti hai — AlarmActivity block ho ya WebView
+       reload ho gaya ho tab bhi session nahi khota.
+     • SESSION-ID DEDUPE (Bug C): ±3s startMs heuristic ki jagah exact
+       sessionId match (+ sirf bina-id wali legacy saves ke liye tight
+       heuristic) — jaayaz sessions ab drop nahi hote.
+     • ELAPSED CAP (Bug E): countdown mode mein recorded ms kabhi
+       countdownMs se zyada nahi (freeze ke baad inflation band).
+  ================================================================ */
 
 (function () {
   'use strict';
@@ -15,9 +30,10 @@
   var ST = window.ST;
   var ICON_CLOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
-  var ICON_CLOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
   var studyState = null;   /* { mode:'count'|'stop', countdownMs, startEpoch, accMs, running } */
   var studyTick = null;
+  var RUN_KEY = 'achiva.timer.running.v1';   /* TIMER-FIX: chalte timer ka persist point */
+  var sessionId = null;                      /* TIMER-FIX: har session ki unique id (dedupe) */
 
   function nativeTimer() {
     var n = window.AchivaNative;
@@ -32,7 +48,37 @@
     return (h > 0 ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(s2).padStart(2, '0');
   }
 
-  var studyContext = null;   /* { subjectId, subjectName, chapterId, chapterName } */
+  var studyContext = null;   /* (legacy, unused — context subject-store.js mein hai) */
+
+  /* TIMER-FIX: chalte timer ka state storage mein mirror karo */
+  function persistRunning() {
+    try {
+      if (!studyState) { window.AppStorage.rawDel(RUN_KEY); return; }
+      window.AppStorage.saveAt(RUN_KEY, {
+        v: 1, sessionId: sessionId,
+        mode: studyState.mode, countdownMs: studyState.countdownMs,
+        startEpoch: studyState.startEpoch, accMs: studyState.accMs,
+        sessionStart: studyState.sessionStart || studyState.startEpoch,
+        running: studyState.running, savedAt: Date.now()
+      });
+    } catch (e) { /* storage fail — timer phir bhi chalta rahega */ }
+  }
+  function clearRunning() {
+    try { window.AppStorage.rawDel(RUN_KEY); } catch (e) { }
+  }
+  /* TIMER-FIX: study-timer.js subject-screens.js se PEHLE load hota hai —
+     boot-reconcile ke waqt refreshLists exist nahi karta, isliye guard */
+  function refreshSafe() {
+    try { if (ST.refreshLists) ST.refreshLists(); } catch (e) { }
+  }
+
+  /* TIMER-FIX (Bug E): countdown mein elapsed kabhi countdownMs se bada
+     record na ho (freeze/resume ke baad wall-clock inflation rokta hai) */
+  function capElapsed(st) {
+    var ms = st && st.elapsedMs > 0 ? st.elapsedMs : 0;
+    if (st && st.mode === 'count' && st.countdownMs > 0 && ms > st.countdownMs) ms = st.countdownMs;
+    return ms;
+  }
 
   function studyStatus() {
     var n = nativeTimer();
@@ -42,10 +88,16 @@
     if (!studyState) return { running: false, mode: 'stop', remainingMs: 0, elapsedMs: 0 };
     var el2 = studyState.running ? (Date.now() - studyState.startEpoch) : 0;
     var total = studyState.accMs + el2;
+    /* TIMER-FIX: count mode mein elapsed capped + countdownMs/startEpochMs
+       status mein expose (native statusJson jaisa hi shape) */
+    var elapsedOut = (studyState.mode === 'count' && total > studyState.countdownMs)
+      ? studyState.countdownMs : total;
     return {
       running: studyState.running,
       mode: studyState.mode,
-      elapsedMs: total,
+      elapsedMs: elapsedOut,
+      countdownMs: studyState.countdownMs,
+      startEpochMs: studyState.sessionStart || studyState.startEpoch,
       remainingMs: studyState.mode === 'count' ? Math.max(0, studyState.countdownMs - total) : 0,
       finished: studyState.mode === 'count' && total >= studyState.countdownMs
     };
@@ -54,22 +106,42 @@
   function studyStart(mode, countdownMs) {
     ensureAudio();          /* user-gesture : baad mein alarm-beep autoplay ke liye */
     var n = nativeTimer();
+    sessionId = uid();      /* TIMER-FIX: dedupe ab exact id se hoga */
     studyState = {
       mode: mode, countdownMs: countdownMs || 0,
-      startEpoch: Date.now(), accMs: 0, running: true
+      startEpoch: Date.now(), accMs: 0, running: true,
+      sessionStart: Date.now()   /* TIMER-FIX: true session start (pause/resume
+                                    se change nahi hota; record ka startMs yahi hai) */
     };
-    if (n) { try { n.timerStart(mode === 'count' ? countdownMs : 0); } catch (e) { /* fallback */ } }
+    persistRunning();       /* TIMER-FIX: reload/crash ke baad recovery isi se */
+    if (n) {
+      try { n.timerStart(mode === 'count' ? countdownMs : 0); } catch (e) { /* fallback */ }
+      /* naya bridge method — purane APK mein absent ho sakta hai (try/catch) */
+      try { if (n.timerSetSession) n.timerSetSession(String(sessionId)); } catch (e) { }
+    }
     ensureGlobalTick();
     paintPopup();
   }
 
   /* popup band ho tab bhi countdown-complete record ho (browser fallback) */
-  /* ek hi session do baar save na ho (web + native dono save karte hain) */
-  function alreadyRecorded(startMs) {
+  /* ek hi session do baar save na ho (web + native dono save karte hain)
+     TIMER-FIX (Bug C): pehle ±3s startMs heuristic JAAYAZ sessions bhi
+     drop kar deta tha. Ab:
+       1. dono taraf sessionId hai → SIRF exact id match par dedupe
+       2. koi side bina-id (purana APK / legacy record) → tight heuristic:
+          startMs ±90s AUR ms ±2s dono match karein tab hi duplicate */
+  function alreadyRecorded(ms, startMs, sid) {
     try {
       var d = ST.studyStore() || [];
       for (var i = 0; i < d.length; i++) {
-        if (d[i] && typeof d[i].startMs === 'number' && Math.abs(d[i].startMs - startMs) < 3000) return true;
+        var r = d[i];
+        if (!r) continue;
+        if (sid && r.sessionId) {
+          if (r.sessionId === sid) return true;
+          continue;                       /* dono id-wale: id hi decide karega */
+        }
+        if (typeof r.startMs === 'number' && typeof r.ms === 'number' &&
+            Math.abs(r.startMs - startMs) < 90000 && Math.abs(r.ms - ms) < 2000) return true;
       }
     } catch (e) { }
     return false;
@@ -77,23 +149,29 @@
 
   function ensureGlobalTick() {
     if (studyTick) return;
+    var tickCount = 0;
     studyTick = setInterval(function () {
       if (!studyState) return;
+      /* TIMER-FIX: ~30s mein ek baar running-state persist — app mar jaye
+         to bhi stopwatch ka time (savedAt tak) recover hota hai */
+      if ((++tickCount) % 60 === 0) persistRunning();
       var st = studyStatus();
       if (st.finished) {
         /* BUG-#003 fix : web KHUD record karta hai (native par nirbhar nahi).
-           Dedupe guard taaki web + native dono milakar double-save na karein. */
-        var startMs = Date.now() - st.elapsedMs;
-        if (!alreadyRecorded(startMs)) {
-          ST.recordStudy(st.elapsedMs, startMs);
+           TIMER-FIX: capped ms + true startEpoch + sessionId + running-clear */
+        var ms = capElapsed(st);
+        var startMs = (typeof st.startEpochMs === 'number' && st.startEpochMs > 0)
+          ? st.startEpochMs : (Date.now() - ms);
+        if (!alreadyRecorded(ms, startMs, sessionId)) {
+          ST.recordStudy(ms, startMs, sessionId);
         }
-        studyState = null;
-        ST.refreshLists();
+        studyState = null; sessionId = null; clearRunning();
+        refreshSafe();
         paintPopup();
         var nat = nativeTimer();
         if (!nat) {
           /* Browser : in-app alarm modal + beep (APK mein native AlarmActivity UI deta hai) */
-          openWebAlarm(st.elapsedMs);
+          openWebAlarm(ms);
         }
       }
     }, 500);
@@ -106,6 +184,7 @@
     if (studyState) {
       studyState.accMs = st.elapsedMs;
       studyState.running = false;
+      persistRunning();     /* TIMER-FIX */
     }
     paintPopup();
   }
@@ -113,18 +192,21 @@
   function studyResume() {
     var n = nativeTimer();
     if (n) { try { n.timerResume(); } catch (e) { } }
-    if (studyState) { studyState.startEpoch = Date.now(); studyState.running = true; }
+    if (studyState) { studyState.startEpoch = Date.now(); studyState.running = true; persistRunning(); }
     paintPopup();
   }
 
   function studyStop() {
     var st = studyStatus();
     var n = nativeTimer();
-    var startMs = Date.now() - st.elapsedMs;
+    /* TIMER-FIX: capped ms + true startEpoch (pause ke baad bhi sahi) + id */
+    var ms = capElapsed(st);
+    var startMs = (typeof st.startEpochMs === 'number' && st.startEpochMs > 0)
+      ? st.startEpochMs : (Date.now() - ms);
     if (n) { try { n.timerStop(); } catch (e) { } }
-    ST.recordStudy(st.elapsedMs, startMs);
-    studyState = null;
-    ST.refreshLists();
+    ST.recordStudy(ms, startMs, sessionId);
+    studyState = null; sessionId = null; clearRunning();
+    refreshSafe();
     paintPopup();
   }
 
@@ -214,7 +296,7 @@
         var n = nativeTimer();
         if (n) { try { n.timerStopAlarm(); } catch (e) { } }
         webAlarmModal.close();
-        ST.refreshLists();
+        refreshSafe();
       });
       body.appendChild(stopB);
     }, null);
@@ -222,15 +304,153 @@
     if (sv) sv.style.display = 'none';
   }
 
-  /* native (AlarmActivity) isi ko call karti hai completed session save ke liye */
-  window.AchivaStudySave = function (ms, startMs) {
-    /* agar web ne pehle hi ye session record kar liya hai to dobara mat save karo */
-    if (!alreadyRecorded(startMs)) {
-      ST.recordStudy(ms, startMs);
-    }
-    ST.refreshLists();
-    try { paintPopup(); } catch (e) { }
+  /* native (AlarmActivity) isi ko call karti hai completed session save ke liye.
+     TIMER-FIX: teesra arg sessionId (naya bridge bhejta hai; purana nahi →
+     undefined → heuristic dedupe). Return '1' = web tak pahuncha aur handle
+     hua — MainActivity ka retry-queue isi ack par rukta hai (Bug A4). */
+  window.AchivaStudySave = function (ms, startMs, sid) {
+    try {
+      ms = Math.floor(Number(ms) || 0);
+      startMs = Math.floor(Number(startMs) || 0);
+      sid = sid ? String(sid) : null;
+      /* agar web ne pehle hi ye session record kar liya hai to dobara mat save karo */
+      if (!alreadyRecorded(ms, startMs, sid)) {
+        ST.recordStudy(ms, startMs, sid);
+      }
+      refreshSafe();
+      try { paintPopup(); } catch (e) { }
+      return '1';
+    } catch (e) { return '0'; }
   };
+
+  /* ================================================================
+     RECONCILE (TIMER-FIX, Bug A/B/F) — app khulte hi, foreground par
+     lautne par (visibilitychange/pageshow), aur MainActivity.onResume
+     ke native hook (window.AchivaTimerReconcile) se chalta hai:
+       1. native ZOMBIE (countdown khatam, service tick mara hua) → save+stop
+       2. native FINISHED (alarm ke waqt page dead/reload tha) → save+stop
+       3. native PENDING (SharedPreferences — process hi mar gaya tha) → save+clear
+       4. web RUNNING-KEY: countdown page-reload mein nikal gaya → capped
+          save + alarm modal; adhura hai → LIVE resume (ab timer reload
+          jhel ta hai)
+       5. native RUNNING hai par web studyState khali (page reload hua) →
+          adopt : popup/tick dobara jud jate hain
+  ================================================================ */
+  function reconcile() {
+    try {
+      var n = nativeTimer();
+      var st = null;
+      if (n) { try { st = JSON.parse(n.timerStatus()); } catch (e) { st = null; } }
+
+      /* 1+2) native finished / zombie-countdown */
+      if (n && st) {
+        var needSave = false, ms = 0, startMs = 0, sid = null;
+        if (st.finished) {
+          needSave = true; ms = capElapsed(st);
+        } else if (st.mode === 'count' && st.running && st.remainingMs <= 0 &&
+                   st.countdownMs > 0 && st.elapsedMs >= st.countdownMs) {
+          needSave = true; ms = st.countdownMs;      /* zombie: tick mara, countdown nikal gaya */
+        }
+        if (needSave) {
+          startMs = (typeof st.startEpochMs === 'number' && st.startEpochMs > 0)
+            ? st.startEpochMs : (Date.now() - ms);
+          sid = st.sessionId ? String(st.sessionId) : sessionId;
+          if (!alreadyRecorded(ms, startMs, sid)) ST.recordStudy(ms, startMs, sid);
+          try { n.timerStop(); } catch (e) { }       /* alarm tone + service band */
+          studyState = null; sessionId = null; clearRunning();
+          refreshSafe();
+          try { paintPopup(); } catch (e) { }
+        }
+      }
+
+      /* 3) native pending (process-death ke baad SharedPreferences se) */
+      if (n && n.timerPendingSession) {
+        try {
+          var raw = n.timerPendingSession();
+          var pend = raw ? JSON.parse(raw) : null;
+          if (pend && pend.elapsedMs >= 1000) {
+            var psid = pend.sessionId ? String(pend.sessionId) : null;
+            if (!alreadyRecorded(pend.elapsedMs, pend.startEpochMs, psid)) {
+              ST.recordStudy(pend.elapsedMs, pend.startEpochMs, psid);
+              refreshSafe();
+            }
+          }
+          if (raw) n.timerClearPending();
+        } catch (e) { }
+      }
+
+      /* fresh native status (upar timerStop ho chuka ho sakta hai) */
+      var natBusy = false, s2 = null;
+      if (n) { try { s2 = JSON.parse(n.timerStatus()); natBusy = !!(s2 && (s2.running || s2.finished)); } catch (e) { } }
+
+      /* 5) native chal raha hai, web state khali (page reload) → adopt */
+      if (!studyState && natBusy && s2 && s2.running) {
+        sessionId = (s2.sessionId ? String(s2.sessionId) : uid());
+        studyState = {
+          mode: s2.mode === 'count' ? 'count' : 'stop',
+          countdownMs: s2.countdownMs || 0,
+          startEpoch: (typeof s2.startEpochMs === 'number' && s2.startEpochMs > 0)
+            ? s2.startEpochMs : (Date.now() - (s2.elapsedMs || 0)),
+          accMs: 0, running: true,
+          sessionStart: (typeof s2.startEpochMs === 'number' && s2.startEpochMs > 0)
+            ? s2.startEpochMs : Date.now()   /* native startEpoch = true session start */
+        };
+        try { if (!s2.sessionId && n.timerSetSession) n.timerSetSession(String(sessionId)); } catch (e) { }
+        persistRunning();
+        ensureGlobalTick();
+        try { paintPopup(); } catch (e) { }
+        return;
+      }
+
+      /* 4) web-only running state restore (browser / dead-native) */
+      if (!studyState && !natBusy) {
+        var rs = null;
+        try { rs = window.AppStorage.loadAt(RUN_KEY); } catch (e) { rs = null; }
+        if (rs && rs.v === 1 && typeof rs.startEpoch === 'number') {
+          var sStart = rs.sessionStart || rs.startEpoch;
+          var acc = rs.accMs || 0;
+          var elapsedSoFar;
+          if (rs.mode === 'count') {
+            /* countdown dead-period mein bhi real-time chalta raha —
+               poora wall-clock gino (complete ho gaya to neeche save hoga) */
+            elapsedSoFar = acc + (rs.running ? (Date.now() - rs.startEpoch) : 0);
+          } else {
+            /* TIMER-FIX: stopwatch ka dead-time NAHI ginte — sirf last
+               savedAt tak (tick ~30s mein persist karta hai). Warna
+               mahino purana running-key mahino ka time record kara deta. */
+            var upto = rs.running
+              ? Math.max(rs.startEpoch, Math.min(Date.now(), rs.savedAt || Date.now()))
+              : rs.startEpoch;
+            elapsedSoFar = acc + (rs.running ? upto - rs.startEpoch : 0);
+          }
+          if (rs.mode === 'count' && rs.countdownMs > 0 && elapsedSoFar >= rs.countdownMs) {
+            /* countdown page-reload/freeze mein hi poora ho gaya tha → abhi save */
+            if (!alreadyRecorded(rs.countdownMs, sStart, rs.sessionId)) {
+              ST.recordStudy(rs.countdownMs, sStart, rs.sessionId);
+            }
+            clearRunning();
+            refreshSafe();
+            openWebAlarm(rs.countdownMs);   /* user ko pata chale : session safe hai */
+          } else {
+            /* timer abhi adhura hai → LIVE resume (ab timer reload jhel ta hai) */
+            sessionId = rs.sessionId || uid();
+            studyState = {
+              mode: rs.mode === 'count' ? 'count' : 'stop',
+              countdownMs: rs.countdownMs || 0,
+              startEpoch: rs.mode === 'count' ? rs.startEpoch : Date.now(),
+              accMs: rs.mode === 'count' ? acc : elapsedSoFar,
+              running: !!rs.running,
+              sessionStart: sStart
+            };
+            persistRunning();
+            ensureGlobalTick();
+            try { paintPopup(); } catch (e) { }
+          }
+        }
+      }
+    } catch (e) { /* reconcile fail — app chalti rahe */ }
+  }
+  window.AchivaTimerReconcile = reconcile;   /* MainActivity.onResume isi ko call karti hai */
 
   var timerModal = UI.modal({ zScrim: 91, zWrap: 92 });
   var popupTick = null;
@@ -317,6 +537,20 @@
       ? (st.running ? 'Timer background mein chal raha hai - notification mein live.' : 'Timer ready.')
       : 'Browser mode : timer chalega, notification APK version mein.';
   }
+
+  /* ================================================================
+     BOOT + FOREGROUND-WAPASI RECONCILE (TIMER-FIX)
+     Loader is file ko AppStorage.open() ke BAAD inject karta hai,
+     isliye storage padhna safe hai. subject-screens baad mein load
+     hota hai — refreshSafe() guard isi liye hai.
+  ================================================================ */
+  try {
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) reconcile();     /* app/tab foreground par lauta */
+    });
+    window.addEventListener('pageshow', function () { reconcile(); });
+  } catch (e) { }
+  reconcile();                               /* boot turant */
 
   window.ST.openTimerPopup = openTimerPopup;
   window.ST.paintTimerPopup = paintPopup;

@@ -53,6 +53,28 @@ class Bridge(private val ctx: Context) {
         TimerService.start(ctx, countdownMs)
     }
 
+    /* ---------- TIMER-FIX (Batch 41) : session identity + recovery ---------- */
+
+    /** web apni session-id bhejti hai (timerStart ke turant baad) —
+       completed session save + dedupe isi se pakka hota hai */
+    @JavascriptInterface
+    fun timerSetSession(sessionId: String?) {
+        TimerService.setSessionId(sessionId)
+        TimerService.persistSession(ctx)   // id prefs mein bhi (process-death recovery)
+    }
+
+    /** process-death ke baad bhi bacha hua completed/overdue session:
+       {elapsedMs, startEpochMs, sessionId} ya "" — web reconcile ise
+       save karke timerClearPending bulata hai */
+    @JavascriptInterface
+    fun timerPendingSession(): String = TimerService.pendingJson(ctx)
+
+    /** pending session web save kar chuki — SharedPreferences saaf karo */
+    @JavascriptInterface
+    fun timerClearPending() {
+        TimerService.clearPending(ctx)
+    }
+
     @JavascriptInterface
     fun timerPause() { TimerService.pause() }
 

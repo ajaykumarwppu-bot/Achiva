@@ -23,8 +23,12 @@
     if (window.AppStorage) window.AppStorage.save(state);
   }
 
-  var studyContext = null;   /* { subjectId, subjectName, chapterId, chapterName } */
   var STUDY_KEY = 'achiva.timer.study.v1';
+  var CTX_KEY = 'achiva.timer.ctx.v1';   /* TIMER-FIX (Bug F): context persist hota hai
+                                            taaki page-reload ke baad native save bhi
+                                            sahi subject/chapter se jude */
+  var studyContext = null;   /* { subjectId, subjectName, chapterId, chapterName } */
+  try { studyContext = window.AppStorage.loadAt(CTX_KEY) || null; } catch (e) { studyContext = null; }
 
   /* ================================================================
      HELPERS
@@ -46,15 +50,16 @@
 
   var app = document.getElementById('app');
 
-  var STUDY_KEY = 'achiva.timer.study.v1';
-  var studyContext = null;   /* { subjectId, subjectName, chapterId, chapterName } */
-  function recordStudy(ms, startMs) {
-    if (ms < 1000) return;
+  /* (duplicate STUDY_KEY/studyContext declarations hata diye — TIMER-FIX:
+     upar wala restore na toote) */
+  function recordStudy(ms, startMs, sessionId) {
+    if (!(ms >= 1000)) return;               /* NaN/negative/1s-se-kam guard */
     var d = window.AppStorage.loadAt(STUDY_KEY) || [];
     if (!Array.isArray(d)) d = [];
     var c = studyContext || {};
     d.push({
       id: uid(),
+      sessionId: sessionId || null,          /* TIMER-FIX (Bug C): dedupe ab exact id se */
       label: 'Study: ' + (c.chapterName || c.subjectName || 'Chapter'),
       subjectId: c.subjectId || null,
       subjectName: c.subjectName || '',
@@ -63,6 +68,11 @@
       startMs: startMs, endMs: startMs + ms, ms: ms
     });
     window.AppStorage.saveAt(STUDY_KEY, d);
+    /* TIMER-FIX (Bug D): session save sabse critical write hai — pending IDB
+       transaction ko turant commit karne ki koshish (fire-and-forget; flush
+       kabhi reject nahi hota). Isse "save ke turant baad app band → data gaya"
+       ki race window lagbhag khatam. */
+    try { if (window.AppStorage.flush) window.AppStorage.flush(); } catch (e) { }
   }
 
   function studyStore() {
@@ -95,7 +105,11 @@
     doneCount: doneCount,
     pctOf: pctOf,
     getStudyContext: function () { return studyContext; },
-    setStudyContext: function (c) { studyContext = c; },
+    setStudyContext: function (c) {
+      studyContext = c;
+      /* TIMER-FIX (Bug F): reload ke baad bhi context zinda rahe */
+      try { window.AppStorage.saveAt(CTX_KEY, c || null); } catch (e) { }
+    },
     recordStudy: recordStudy,
     studyStore: studyStore,
     studyMsForChapter: studyMsForChapter,

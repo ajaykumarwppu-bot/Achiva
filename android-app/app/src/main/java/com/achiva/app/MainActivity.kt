@@ -2,8 +2,12 @@ package com.achiva.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -29,17 +33,62 @@ class MainActivity : Activity() {
         @Volatile var instance: MainActivity? = null
             private set
 
-        fun requestSave(elapsedMs: Long, startEpochMs: Long) {
-            val act = instance ?: return
-            act.runOnUiThread {
-                try {
-                    act.web?.evaluateJavascript(
-                        "if (window.AchivaStudySave) window.AchivaStudySave(" +
-                            elapsedMs + "," + startEpochMs + ");", null
-                    )
-                } catch (_: Throwable) { }
+        /* TIMER-FIX (Bug A4): jo save WebView tak nahi pahunch paya (page
+           reload ho raha tha / activity destroyed thi) wo yahan rukta hai —
+           agle onResume / onPageFinished par retry hota hai. Pehle ye
+           SILENTLY DROP ho jata tha. */
+        @Volatile var pendingSave: Triple<Long, Long, String>? = null
+
+        fun requestSave(elapsedMs: Long, startEpochMs: Long, sessionId: String = "") {
+            val act = instance
+            if (act == null || act.web == null) {
+                pendingSave = Triple(elapsedMs, startEpochMs, sessionId)
+                return
             }
+            act.runOnUiThread { act.attemptSave(elapsedMs, startEpochMs, sessionId, 0) }
         }
+    }
+
+    private val saveHandler = Handler(Looper.getMainLooper())
+
+    /* TIMER-FIX: JS '1' ack lautata hai (window.AchivaStudySave ka return).
+       Ack na mile → har 1s retry (max 30) → phir bhi nahi → pendingSave. */
+    private fun attemptSave(ms: Long, startMs: Long, sid: String, tries: Int) {
+        val w = web
+        if (w == null) {
+            if (tries < 30) saveHandler.postDelayed({ attemptSave(ms, startMs, sid, tries + 1) }, 1000L)
+            else pendingSave = Triple(ms, startMs, sid)
+            return
+        }
+        val safeSid = sid.filter { it.isLetterOrDigit() }.take(40)
+        val js = "(function(){try{" +
+            "return window.AchivaStudySave ? String(window.AchivaStudySave($ms,$startMs,\"$safeSid\")) : \"0\";" +
+            "}catch(e){return \"0\";}})();"
+        val onFail: () -> Unit = {
+            if (tries < 30) saveHandler.postDelayed({ attemptSave(ms, startMs, sid, tries + 1) }, 1000L)
+            else pendingSave = Triple(ms, startMs, sid)
+        }
+        try {
+            w.evaluateJavascript(js) { res ->
+                if (res == null || !res.contains("1")) onFail()
+            }
+        } catch (_: Throwable) { onFail() }
+    }
+
+    private fun drainPendingSave() {
+        val p = pendingSave ?: return
+        pendingSave = null
+        attemptSave(p.first, p.second, p.third, 0)
+    }
+
+    /* TIMER-FIX: web ka reconcile hook — orphan/finished/pending sessions
+       page khulte hi aur app foreground par lautne par save hote hain */
+    private fun reconcileWeb() {
+        try {
+            web?.evaluateJavascript(
+                "if (window.AchivaTimerReconcile) window.AchivaTimerReconcile();", null
+            )
+        } catch (_: Throwable) { }
     }
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
@@ -74,6 +123,13 @@ class MainActivity : Activity() {
 
             // sirf hamara hosted URL WebView ke andar, baaki browser mein
             wv.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                    /* TIMER-FIX: page ready — orphan sessions reconcile karo
+                       aur pending save (retry-queue) drain karo */
+                    reconcileWeb()
+                    drainPendingSave()
+                }
+
                 override fun shouldOverrideUrlLoading(
                     view: WebView?, request: WebResourceRequest?
                 ): Boolean {
@@ -96,6 +152,21 @@ class MainActivity : Activity() {
             // ★ native bridge — web isi se phone ka usage data maangti hai
             wv.addJavascriptInterface(Bridge(this), "AchivaNative")
 
+            /* TIMER-FIX (Bug A2): Android 13+ par notification permission ke
+               bina timer notification + alarm full-screen notification DONO
+               invisible rehte hain. Ek baar maang lo. */
+            if (Build.VERSION.SDK_INT >= 33) {
+                try {
+                    if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        requestPermissions(
+                            arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001
+                        )
+                    }
+                } catch (_: Throwable) { }
+            }
+
             wv.loadUrl(url)
         } catch (t: Throwable) {
             showErrorScreen("ACHIVA START ERROR\n\n" + (t.toString()))
@@ -110,6 +181,17 @@ class MainActivity : Activity() {
                 "if (window.__timerRefresh) window.__timerRefresh();", null
             )
         } catch (_: Throwable) { }
+        /* TIMER-FIX: foreground par laute → reconcile + pending-save retry */
+        reconcileWeb()
+        drainPendingSave()
+    }
+
+    override fun onDestroy() {
+        /* TIMER-FIX: stale instance se bacho — requestSave ab pendingSave
+           mein park karega (pehle destroyed WebView par silently fail hota tha) */
+        if (instance === this) instance = null
+        saveHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 
     /** crash ki jagah : screen par readable error */

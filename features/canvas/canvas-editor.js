@@ -34,6 +34,16 @@
 
   var canvas = null;
   var readOnly = false;
+  /* READ-ONLY gesture fix : lock ON ho to cards / group boxes / line
+     hits pointer-events NA pakdein — har touch seedha world/viewport
+     par gire, jisse pan (scroll) aur pinch/wheel zoom KAHIN SE bhi
+     chale (khali jagah ho ya card ke upar). Padhna/scroll/zoom sab
+     free; edit pehle hi blocked hai. */
+  (function () {
+    var st = document.createElement('style');
+    st.textContent = '.ro [data-cid],.ro [data-gid],.ro svg{pointer-events:none}';
+    document.head.appendChild(st);
+  })();
   var t = { x: 60, y: 90, s: 1 };
 
   /* ---------- screen ---------- */
@@ -158,10 +168,14 @@
     lastSnap = redoStack.pop();
     applySnap(lastSnap);
   });
-  roBtn.addEventListener('click', function () {
-    readOnly = !readOnly;
+  function applyRO() {
     roBtn.style.background = readOnly ? 'var(--ink)' : '';
     roBtn.style.color = readOnly ? 'var(--paper)' : '';
+    viewport.classList.toggle('ro', readOnly);
+  }
+  roBtn.addEventListener('click', function () {
+    readOnly = !readOnly;
+    applyRO();
   });
   fitBtn.addEventListener('click', function () {
     var vw = viewport.clientWidth || 360;
@@ -463,8 +477,7 @@
     canvas = c;
     backFn = onBack || null;
     readOnly = false;
-    roBtn.style.background = '';
-    roBtn.style.color = '';
+    applyRO();
     if (!Array.isArray(c.groups)) c.groups = [];
     undoStack = []; redoStack = [];
     cancelLP();

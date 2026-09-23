@@ -38,6 +38,7 @@ class AlarmActivity : Activity() {
 
         val elapsed = TimerService.pendingElapsedMs
         val startEpoch = TimerService.pendingStartEpochMs
+        val sid = TimerService.pendingSessionId     // TIMER-FIX: dedupe id
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
@@ -70,7 +71,7 @@ class AlarmActivity : Activity() {
 
         /* Stop & Save */
         btn("Stop & Save") {
-            MainActivity.requestSave(elapsed, startEpoch)
+            MainActivity.requestSave(elapsed, startEpoch, sid)
             TimerService.saveAndStop(this)
             finish()
         }
@@ -81,7 +82,7 @@ class AlarmActivity : Activity() {
         listOf(3, 5, 60).forEach { m ->
             val b = Button(this)
             b.text = "+$m min"
-            b.setOnClickListener { doExtend(elapsed, startEpoch, m.toLong() * 60000L) }
+            b.setOnClickListener { doExtend(elapsed, startEpoch, sid, m.toLong() * 60000L) }
             row.addView(b)
         }
         root.addView(row)
@@ -94,15 +95,15 @@ class AlarmActivity : Activity() {
         btn("Extend custom") {
             val m = inp.text.toString().trim().toLongOrNull() ?: return@btn
             if (m < 1) return@btn
-            doExtend(elapsed, startEpoch, m * 60000L)
+            doExtend(elapsed, startEpoch, sid, m * 60000L)
         }
 
         setContentView(root)
     }
 
-    private fun doExtend(elapsed: Long, startEpoch: Long, ms: Long) {
+    private fun doExtend(elapsed: Long, startEpoch: Long, sid: String, ms: Long) {
         /* pehle completed session save, phir naya countdown */
-        MainActivity.requestSave(elapsed, startEpoch)
+        MainActivity.requestSave(elapsed, startEpoch, sid)
         TimerService.extend(this, ms)
         finish()
     }
