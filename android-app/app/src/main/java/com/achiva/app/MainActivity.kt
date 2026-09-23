@@ -121,7 +121,17 @@ class MainActivity : Activity() {
             wv.settings.databaseEnabled = true
             wv.settings.mediaPlaybackRequiresUserGesture = false
 
-            // sirf hamara hosted URL WebView ke andar, baaki browser mein
+            /* TIMER-FIX / GOOGLE-FIX : Android WebView ka UA "; wv)" flag
+               Google OAuth ko block karwata hai (disallowed_useragent).
+               Flag hata do taaki Google consent WebView mein chal sake. */
+            try {
+                val ua = wv.settings.userAgentString
+                if (ua != null && ua.contains("; wv)")) {
+                    wv.settings.userAgentString = ua.replace("; wv)", "")
+                }
+            } catch (_: Throwable) { }
+
+            // sirf hamara hosted URL + auth flows WebView ke andar, baaki browser mein
             wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, finishedUrl: String?) {
                     /* TIMER-FIX: page ready — orphan sessions reconcile karo
@@ -135,7 +145,16 @@ class MainActivity : Activity() {
                 ): Boolean {
                     return try {
                         val u = request?.url?.toString() ?: return false
-                        if (u.startsWith(url)) false
+                        val host = request?.url?.host ?: ""
+                        /* GOOGLE-FIX : Google sign-in redirect flow ke saare
+                           pages app ke ANDAR khulein (popup WebView mein block
+                           hota hai, redirect chalta hai) */
+                        val inApp = u.startsWith(url) ||
+                            host == "accounts.google.com" ||
+                            host == "apis.google.com" ||
+                            host == "firebaseapp.com" ||
+                            host.endsWith(".firebaseapp.com")
+                        if (inApp) false
                         else {
                             startActivity(
                                 android.content.Intent(
@@ -184,6 +203,16 @@ class MainActivity : Activity() {
         /* TIMER-FIX: foreground par laute → reconcile + pending-save retry */
         reconcileWeb()
         drainPendingSave()
+    }
+
+    /* GOOGLE-FIX : Google consent page se back → app page par wapas
+       (warna back button app band kar deta) */
+    override fun onBackPressed() {
+        if (web?.canGoBack() == true) {
+            web?.goBack()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     override fun onDestroy() {

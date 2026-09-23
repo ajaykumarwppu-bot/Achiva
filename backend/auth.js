@@ -88,7 +88,14 @@
       signInGoogle: function () {
         var pr = new window.firebase.auth.GoogleAuthProvider();
         return fa.signInWithPopup(pr);
-      }
+      },
+      /* Google OAuth redirect — WebView mein popup block hota hai,
+         isliye full-page consent (app ke andar) */
+      signInGoogleRedirect: function () {
+        var pr = new window.firebase.auth.GoogleAuthProvider();
+        return fa.signInWithRedirect(pr);
+      },
+      getRedirectResult: function () { return fa.getRedirectResult(); }
     };
   }
 
@@ -300,8 +307,11 @@
     b.type = 'button';
     b.textContent = text;
     b.setAttribute('data-mode', key);
-    b.style.cssText = 'flex:1;padding:9px 0;border-radius:99px;border:1px solid transparent;' +
-      'background:transparent;font:inherit;font-size:12px;font-weight:700;color:var(--ash);cursor:pointer';
+    /* margin-based gap : purane WebView mein flex-gap support nahi,
+       isliye LOGIN / New Account kabhi chipkenge nahi */
+    b.style.cssText = 'flex:1;margin:0 3px;padding:9px 4px;border-radius:99px;border:1px solid transparent;' +
+      'background:transparent;font:inherit;font-size:11.5px;font-weight:700;color:var(--ash);cursor:pointer;' +
+      'text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
     return b;
   }
 
@@ -334,9 +344,9 @@
 
     /* tabs */
     gTabs = document.createElement('div');
-    gTabs.style.cssText = 'display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:99px;background:var(--mi-bg);margin-top:2px';
+    gTabs.style.cssText = 'display:flex;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:99px;background:var(--mi-bg);margin-top:2px';
     gTabs.appendChild(tabBtn('LOGIN', 'login'));
-    gTabs.appendChild(tabBtn('NAYA ACCOUNT', 'sign'));
+    gTabs.appendChild(tabBtn('New Account', 'sign'));
     gTabs.addEventListener('click', function (e) {
       var b = e.target.closest ? e.target.closest('button[data-mode]') : null;
       if (b) setMode(b.getAttribute('data-mode'));
@@ -797,35 +807,75 @@
     return false;
   }
 
+  function hasGoogleCred(u) {
+    var pd = (u && u.providerData) || [];
+    for (var i = 0; i < pd.length; i++) if (pd[i].providerId === 'google.com') return true;
+    return false;
+  }
+
+  /* naya Google user jisne abhi password link nahi kiya → setup chahiye */
+  function needsGoogleSetup(u) {
+    return !!u && hasGoogleCred(u) && !hasPasswordCred(u);
+  }
+
+  /* Android WebView UA mein "; wv)" hota hai */
+  function isWebView() {
+    try {
+      var nav = (typeof window !== 'undefined' && window.navigator) ? window.navigator : null;
+      var ua = (nav && nav.userAgent) || '';
+      return ua.indexOf('; wv)') !== -1 || ua.indexOf('wv)') !== -1;
+    } catch (e) { return false; }
+  }
+
+  /* Google sign-in ka result (popup YA redirect) — setup ya entry */
+  function handleGoogleUser(u) {
+    if (!u || !u.uid) return;
+    if (user === u && !gateVisible()) return;   /* pehle se andar */
+    if (googleUser === u) return;               /* setup pehle se khula */
+    if (needsGoogleSetup(u)) {
+      googleUser = u;
+      showGate();
+      if (gTitle) gTitle.textContent = 'Account setup';
+      if (gSub) gSub.textContent = 'Google email verify ho gaya';
+      if (gSetupEmail) gSetupEmail.textContent = u.email || '';
+      if (gSetupName) gSetupName.value = u.displayName || '';
+      if (gSetupPass) { gSetupPass.input.value = ''; paintMeter(gSetupMeter, ''); }
+      showView('g-setup');
+      setBusy(false);
+      return;
+    }
+    onSignedIn(u);
+  }
+
   function googleSignIn() {
     if (busy) return;
     var p = provider();
     if (!p) { showError('Login abhi chalu nahi hai (Firebase config missing).'); return; }
     if (!p.signInGoogle) { showError('Google login is environment mein available nahi hai.'); return; }
     showError('');
+    /* WebView : popup block hota hai → seedha redirect flow */
+    if (isWebView() && p.signInGoogleRedirect) {
+      setBusy(true, 'Google khul raha hai...');
+      Promise.resolve(p.signInGoogleRedirect()).catch(function (e) {
+        setBusy(false);
+        showError(authMsg(e));
+      });
+      return;
+    }
     setBusy(true, 'Google khul raha hai...');
     Promise.resolve(p.signInGoogle()).then(function (cred) {
       setBusy(false);
-      var u = (cred && cred.user) || p.currentUser();
-      if (!u || !u.uid) { showError('Google login confirm nahi hua. Dobara koshish karein.'); return; }
-      if (!u.displayName || !hasPasswordCred(u)) {
-        /* pehli baar : naam + password setup */
-        googleUser = u;
-        gSetupEmail.textContent = u.email || '';
-        gSetupName.value = u.displayName || '';
-        gSetupPass.input.value = '';
-        paintMeter(gSetupMeter, '');
-        gTitle.textContent = 'Account setup';
-        gSub.textContent = 'Google email verify ho gaya';
-        showView('g-setup');
-        return;
-      }
-      onSignedIn(u);
+      handleGoogleUser((cred && cred.user) || p.currentUser());
     }).catch(function (e) {
       setBusy(false);
       var raw = String((e && e.message) || e || '');
-      if (/disallowed_useragent|webview/i.test(raw) || (e && e.code === 'auth/operation-not-allowed')) {
-        showError('Is app (WebView) mein Google popup support nahi karta — browser mein kholein, ya email-code se account banayein.');
+      /* popup block (WebView/disallowed) → redirect se try karo */
+      if (/disallowed_useragent|webview|popup-blocked|popup-closed/i.test(raw) && p.signInGoogleRedirect) {
+        setBusy(true, 'Google khul raha hai...');
+        Promise.resolve(p.signInGoogleRedirect()).catch(function (e2) {
+          setBusy(false);
+          showError(authMsg(e2));
+        });
         return;
       }
       showError(authMsg(e));
@@ -1005,7 +1055,11 @@
       if (settled) return;
       settled = true;
       setBusy(false);
-      if (u && u.uid) resume(u);
+      if (u && u.uid) {
+        /* naya Google user (password link nahi) → setup view, warna resume */
+        if (needsGoogleSetup(u)) handleGoogleUser(u);
+        else resume(u);
+      }
       else { user = null; showLoginUI(); }
     };
     var guard = window.setTimeout(function () {
@@ -1020,6 +1074,14 @@
       window.clearTimeout(guard);
       finish(null);
     }
+    /* redirect flow se wapas aaye hon → pending Google result uthao */
+    try {
+      if (p.getRedirectResult) {
+        Promise.resolve(p.getRedirectResult()).then(function (cred) {
+          if (cred && cred.user) handleGoogleUser(cred.user);
+        }, function () { /* ignore */ });
+      }
+    } catch (e) { /* ignore */ }
   }
 
   function showLoginUI() {
