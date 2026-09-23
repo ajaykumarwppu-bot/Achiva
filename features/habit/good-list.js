@@ -118,6 +118,12 @@
     card.appendChild(main);
     card.addEventListener('click', function () { openList(); });
     scroll.appendChild(card);
+    /* BAD HABITS entry card (Good Habit ke NEECHE, same style) —
+       card bad-list.js banata hai; file na load ho to chup-chaap skip */
+    if (window.BadList && window.BadList.entryCard) scroll.appendChild(window.BadList.entryCard());
+    /* CHALLENGES entry card (Bad Habit ke NEECHE, same style) —
+       card challenge-list.js banata hai */
+    if (window.ChallengeList && window.ChallengeList.entryCard) scroll.appendChild(window.ChallengeList.entryCard());
     entryScreen.appendChild(scroll);
   }
 

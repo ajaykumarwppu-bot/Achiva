@@ -44,6 +44,8 @@
     { docId: 'canvasColors',   key: 'achiva.canvas.savedColors',  label: 'Canvas colours',      main: false },
     { docId: 'goals',          key: 'achiva.goals.v1',            label: 'Goals + sessions',    main: true },
     { docId: 'goodHabits',     key: 'achiva.goodHabits.v1',       label: 'Good habits',         main: true },
+    { docId: 'badHabits',      key: 'achiva.badHabits.v1',        label: 'Bad habits',          main: true },
+    { docId: 'challenges',     key: 'achiva.challenges.v1',       label: 'Challenges',          main: true },
     { docId: 'exams',          key: 'achiva.exams.v1',            label: 'Exams (subject widget)', main: true },
     { docId: 'tasks',          key: 'achiva.tasks.v1',            label: 'Tasks',             main: true },
     { docId: 'prefs',          key: 'achiva.prefs.v1',            label: 'App settings',        main: false }

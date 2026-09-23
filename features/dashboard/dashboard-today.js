@@ -20,6 +20,12 @@
    4) GOOD HABITS (aaj)
         - har habit = aaj repeat karna hai; done = reps poori
         - Done button → remaining reps bhar deta hai
+   5) TASKS (features/task/task.js ke extra tasks)
+        - jo bhi task create hua wo yahan bhi dikhta hai — TODAY /
+          UPCOMING / PASSED groups mein (task.js wali hi grouping)
+        - Gol tick → us din ki occurrence done/undone (task.js ke
+          toggleDone API se, storage wahin se persist hoti hai)
+        - Click-par-nav nahi : sirf tick, taaki galti se screen na khule
    ================================================================ */
 
 (function () {
@@ -235,13 +241,101 @@
     scroll.appendChild(c);
   }
 
+  /* ---------- 5) TASKS feature ke extra tasks ----------
+     Jo bhi task TASKS screen par create hua wo yahan bhi dikhta hai
+     (Today / Upcoming / Passed — task.js wali hi grouping) aur gol
+     tick se wahin se done hota hai. Toggle task.js ke toggleDone()
+     se hota hai taaki in-memory cache aur storage dono sync rahein. */
+  function taskItems() {
+    var out = { today: [], up: [], past: [] };
+    var TF = window.TaskFeature;
+    if (!TF || !TF.all) return out;
+    var tdy = today();
+    (TF.all() || []).forEach(function (t) {
+      if (TF.occursOn(t, tdy)) out.today.push({ t: t, iso: tdy });
+      else {
+        var nx = TF.nextFrom(t, tdy);
+        if (nx) out.up.push({ t: t, iso: nx });
+        else out.past.push({ t: t, iso: t.date });
+      }
+    });
+    var byTime = function (a, b) { return (a.t.time || '').localeCompare(b.t.time || ''); };
+    out.today.sort(byTime);
+    out.up.sort(function (a, b) { return a.iso === b.iso ? byTime(a, b) : (a.iso < b.iso ? -1 : 1); });
+    out.past.sort(byTime);
+    return out;
+  }
+
+  function renderTasks(scroll) {
+    scroll.appendChild(sectionTitle('Tasks'));
+    var c = cardWrap();
+    var groups;
+    try { groups = taskItems(); } catch (e) { groups = { today: [], up: [], past: [] }; }
+    if (!groups.today.length && !groups.up.length && !groups.past.length) {
+      c.appendChild(emptyRow('Koi task nahi — FAB → TASKS se add karo.'));
+      scroll.appendChild(c);
+      return;
+    }
+    var needSep = false;
+    function sep() {
+      var d = el('div');
+      d.style.cssText = 'height:1px;background:var(--line);margin:8px 0';
+      c.appendChild(d);
+    }
+    function groupLabel(txt) {
+      if (needSep) sep();
+      needSep = true;
+      var g = el('div', null, txt);
+      g.style.cssText = 'font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin:2px 0 6px';
+      c.appendChild(g);
+    }
+    function row(it) {
+      var TF = window.TaskFeature;
+      var t = it.t, iso = it.iso;
+      var done = !!(t.done && t.done[iso]);
+      var r = el('div');
+      r.style.cssText = 'display:flex;align-items:center;gap:8px';
+      var tick = UI.roundCheck(done);
+      tick.addEventListener('click', function () {
+        TF.toggleDone(t.id, iso);
+        window.Dashboard.open();
+      });
+      r.appendChild(tick);
+      var main = el('div');
+      main.style.cssText = 'flex:1;min-width:0';
+      var nm = el('div', null, esc(t.name || 'Task'));
+      nm.style.cssText = 'font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;' +
+        'text-overflow:ellipsis;white-space:nowrap;' + (done ? 'text-decoration:line-through;opacity:.6' : '');
+      main.appendChild(nm);
+      var bits = [UI.fmtDate(iso), TF.fmtTime(t.time)];
+      if ((t.repeat || {}).mode !== 'none') bits.push(TF.repeatLabel(t));
+      var meta = el('div', null, esc(bits.join(' · ')));
+      meta.style.cssText = 'font-size:10.5px;color:var(--ash);margin-top:2px';
+      main.appendChild(meta);
+      r.appendChild(main);
+      r.appendChild(chip(t.priority || 'Medium',
+        t.priority === 'High' ? 'red' : t.priority === 'Medium' ? 'amber' : null));
+      return r;
+    }
+    function addGroup(txt, list) {
+      if (!list.length) return;
+      groupLabel(txt);
+      list.forEach(function (it, i) { if (i) sep(); c.appendChild(row(it)); });
+    }
+    addGroup('Today', groups.today);
+    addGroup('Upcoming', groups.up);
+    addGroup('Passed', groups.past);
+    scroll.appendChild(c);
+  }
+
   function render(scroll) {
     window.__dashScroll = scroll;
     renderChapters(scroll);
     renderRevisions(scroll);
     renderGoalTasks(scroll);
     renderHabits(scroll);
+    renderTasks(scroll);
   }
 
-  window.DashboardToday = { render: render, todayChapters: todayChapters, todayRevisions: todayRevisions, goalTasksToday: goalTasksToday };
+  window.DashboardToday = { render: render, todayChapters: todayChapters, todayRevisions: todayRevisions, goalTasksToday: goalTasksToday, taskItems: taskItems };
 })();

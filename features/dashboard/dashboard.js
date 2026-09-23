@@ -6,6 +6,8 @@
        - GOAL tasks  : har goal ke canvas-board ke tagged cards
                        (daily / range / date tasks)  [goal-task logic]
        - HABIT tasks : har active habit = ek recurring daily task
+       - TASKS feature tasks : task.js wale extra tasks (one-time /
+                       repeating) — done = us din ki occurrence tick
    • Count + list (naam + source + type + due-status).
    • Aage aur sections (streaks, progress, timers) yahi judenge.
    ================================================================ */
@@ -70,8 +72,32 @@
     return out;
   }
 
+  /* ---------- TASKS feature tasks (features/task/task.js) ----------
+     Har extra task (one-time ya repeating) bhi dashboard ke Total
+     Tasks mein gina jaye. done = us din ki occurrence tick (today
+     occur karta ho to today, warna agla occurrence / base date). */
+  function featureTasks() {
+    var out = [];
+    try {
+      var TF = window.TaskFeature;
+      if (!TF || !TF.all) return out;
+      var tdy = today();
+      (TF.all() || []).forEach(function (t) {
+        var iso = TF.occursOn(t, tdy) ? tdy : (TF.nextFrom(t, tdy) || t.date);
+        out.push({
+          title: t.name || 'Task',
+          source: 'Task',
+          type: (t.repeat && t.repeat.mode !== 'none') ? TF.repeatLabel(t) : 'one-time',
+          done: !!(t.done && t.done[iso]),
+          goal: ''
+        });
+      });
+    } catch (e) { }
+    return out;
+  }
+
   function tasks() {
-    return goalTasks().concat(habitTasks());
+    return goalTasks().concat(habitTasks()).concat(featureTasks());
   }
 
   function statusOf(t) {
@@ -115,9 +141,9 @@
 
   var openRetries = 0;
   function open() {
-    /* init ke waqt goals/habit scripts abhi load nahi hui hoti →
+    /* init ke waqt goals/habit/task scripts abhi load nahi hui hoti →
        ek tick ruk kar render karo taaki pehli baar bhi sab sections bhare dikhein */
-    if ((!window.GoalTask || !window.GoodList) && openRetries < 5) {
+    if ((!window.GoalTask || !window.GoodList || !window.TaskFeature) && openRetries < 5) {
       openRetries++;
       window.setTimeout(open, 0);
       return;
@@ -127,5 +153,11 @@
     if (bridge()) bridge().show(screen, true);
   }
 
-  window.Dashboard = { open: open, render: render, tasks: tasks };
+  /* kya dashboard screen abhi active hai? (task.js parse-time par
+     isi se pata karke dashboard refresh karta hai) */
+  function isCurrent() {
+    return screen.classList.contains('active');
+  }
+
+  window.Dashboard = { open: open, render: render, tasks: tasks, isCurrent: isCurrent };
 })();

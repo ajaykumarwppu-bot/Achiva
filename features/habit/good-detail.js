@@ -115,8 +115,14 @@
   }
 
 
-  /* ---------- formation graph : BOX mein, 7-din sliding window, solid base ---------- */
-  function formationPanel(h) {
+  /* ---------- formation graph : BOX mein, 7-din sliding window, solid base ----------
+     REUSE : bad-detail.js bhi yahi panel use karta hai opts ke saath —
+       opts.labels   : Y-axis ke level naam (default GoodSystem.LEVEL_SHORT)
+       opts.stageOf  : cs se stage object (default cs.stage)
+       opts.hideRules: true → Rules button nahi (bad board par rules screen nahi hai)
+     Bina opts ke behaviour bilkul purana hi rehta hai. */
+  function formationPanel(h, opts) {
+    opts = opts || {};
     var GS = window.GoodSystem;
     var cs = GS.compute(h.logs || {}, {
       startDate: h.startDate, strict: h.strict || 3, repsPerDay: h.repsPerDay || 1
@@ -132,13 +138,15 @@
     head.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:10px';
     head.appendChild(UI.panelTitle('Habit Formation', true));
     head.lastChild.style.flex = '1';
-    var sc = UI.chip(cs.stage.key);
+    var sc = UI.chip(opts.stageOf ? opts.stageOf(cs).key : cs.stage.key);
     sc.style.cssText += ';background:var(--chip-bg);color:var(--ink2);border-color:var(--s2);flex:none';
     head.appendChild(sc);
-    var rb = UI.pillBtn('Rules');
-    rb.style.cssText += ';padding:5px 11px;font-size:10.5px;flex:none';
-    rb.addEventListener('click', function () { openRules(h, cs); });
-    head.appendChild(rb);
+    if (!opts.hideRules) {
+      var rb = UI.pillBtn('Rules');
+      rb.style.cssText += ';padding:5px 11px;font-size:10.5px;flex:none';
+      rb.addEventListener('click', function () { openRules(h, cs); });
+      head.appendChild(rb);
+    }
     p.appendChild(head);
 
     var totalDays = Math.max(1, cs.totalDays);
@@ -170,7 +178,7 @@
           '" stroke="var(--s2)" stroke-width="1" stroke-dasharray="4,4"/>' +
           '<rect x="2" y="' + (y - 8).toFixed(1) + '" width="30" height="16" rx="5" fill="var(--chip-bg)" stroke="var(--s2)"/>' +
           '<text x="17" y="' + (y + 3.5).toFixed(1) + '" font-size="9" fill="var(--ink2)" font-weight="700" text-anchor="middle">' +
-          GS.LEVEL_SHORT[L - 1] + '</text>';
+          (opts.labels || GS.LEVEL_SHORT)[L - 1] + '</text>';
       }
       /* bottom SOLID line (corner to corner) */
       g += '<line x1="0" y1="' + (H - padB) + '" x2="' + W + '" y2="' + (H - padB) + '" stroke="var(--ink2)" stroke-width="1.6"/>';
@@ -444,5 +452,5 @@
     window.SubjectListBridge.show(screen, true);
   }
 
-  window.GoodDetail = { open: open };
+  window.GoodDetail = { open: open, formationPanel: formationPanel };
 })();

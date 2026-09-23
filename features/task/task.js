@@ -17,6 +17,14 @@
    PASSED. Gol tick us din ki occurrence ko done karta hai.
    Storage : AppStorage.loadAt/saveAt('achiva.tasks.v1')
    Depends on : UI, AchivaCalendar (basics.js), SubjectListBridge
+
+   DASHBOARD BRIDGE : features/dashboard (dashboard-today.js ka
+   "Tasks" section) isi file ka chhota public API use karta hai —
+   all / occursOn / nextFrom / repeatLabel / fmtTime / priorityCss /
+   toggleDone. In-memory `data` hi single source of truth hai,
+   isliye dashboard seedha storage likhne ke bajaye toggleDone()
+   call karta hai (warna task.js ka purana cache dashboard ke
+   write ko overwrite kar deta).
    ================================================================ */
 
 (function () {
@@ -108,12 +116,7 @@
     var row = UI.rowBox();
     var done = !!(t.done && t.done[iso]);
     var tick = UI.roundCheck(done);
-    tick.addEventListener('click', function () {
-      t.done = t.done || {};
-      t.done[iso] = !t.done[iso];
-      persist();
-      render();
-    });
+    tick.addEventListener('click', function () { toggleDone(t.id, iso); });
     row.appendChild(tick);
 
     var mid = el('div');
@@ -521,5 +524,38 @@
     });
   }
 
-  window.TaskFeature = { open: open };
+  /* ---------- dashboard bridge : public API ----------
+     toggleDone = taskRow wala hi tick logic (id se task dhundo,
+     us din ki occurrence ulat do, persist + render). Dashboard ka
+     "Tasks" section isi ko call karta hai. */
+  function toggleDone(id, iso) {
+    var t = null;
+    data.tasks.forEach(function (x) { if (x.id === id) t = x; });
+    if (!t) return;
+    t.done = t.done || {};
+    t.done[iso] = !t.done[iso];
+    persist();
+    render();
+  }
+
+  window.TaskFeature = {
+    open: open,
+    all: function () { return data.tasks; },
+    occursOn: occursOn,
+    nextFrom: nextFrom,
+    repeatLabel: repeatLabel,
+    fmtTime: fmtTime,
+    priorityCss: priorityCss,
+    toggleDone: toggleDone
+  };
+
+  /* parse-time refresh : boot order mein task.js dashboard scripts
+     ke BAAD aata hai — agar dashboard pehle se khula hai (list.js
+     ne parse-time par open kiya tha) to Tasks section turant bhar
+     do, user ko khali card na dikhe. */
+  try {
+    if (window.Dashboard && window.Dashboard.isCurrent && window.Dashboard.isCurrent()) {
+      window.Dashboard.render();
+    }
+  } catch (e) { /* ignore */ }
 })();
