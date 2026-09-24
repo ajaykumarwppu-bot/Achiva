@@ -73,7 +73,9 @@
     (ST().state.subjects || []).forEach(function (s) {
       (s.chapters || []).forEach(function (ch) {
         if (ch.done) return;
-        var start = ch.start || '', end = ch.end || '';
+        /* chapter dates subject-tracker mein startDate/endDate ke
+           naam se save hoti hain (basics.js) — wahi padho */
+        var start = ch.startDate || '', end = ch.endDate || '';
         var status = null;
         if (end === t) status = 'Deadline aaj';
         else if (start === t) status = 'Aaj start';
@@ -102,7 +104,7 @@
       nm.style.cssText = 'font-size:13px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
       main.appendChild(sub); main.appendChild(nm);
       var meta = el('div', null,
-        (it.ch.start || '?') + (it.ch.end ? ' → ' + it.ch.end : ' → no end') +
+        (it.ch.startDate || '?') + (it.ch.endDate ? ' → ' + it.ch.endDate : ' → no end') +
         ' · ' + (window.ChapterProgress ? window.ChapterProgress.chapterPct(it.ch) : 0) + '%');
       meta.style.cssText = 'font-size:10.5px;color:var(--ash);margin-top:2px';
       main.appendChild(meta);
