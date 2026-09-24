@@ -41,6 +41,14 @@
         if (!board) return;
         (board.cards || []).forEach(function (c) {
           if (!c.tag) return;
+          /* SIRF AAJ ke goal tasks : daily = har din due; range =
+             aaj beech mein; date = sirf wahi din. Baaki dated cards
+             dashboard par NAHI ginte (wo goal ke andar dikhte hain). */
+          var tag = c.tag, tdy = today(), due = false;
+          if (tag.type === 'daily') due = true;
+          else if (tag.type === 'range' && tag.range) due = (tdy >= tag.range.from && tdy <= tag.range.to);
+          else if (tag.type === 'date') due = (tag.date === tdy);
+          if (!due) return;
           out.push({
             title: (c.text || '').split('\n')[0].replace(/#(daily|done)|#range\s+[0-9/\-]+/gi, '').trim() || 'Task',
             source: 'Goal',
@@ -73,9 +81,9 @@
   }
 
   /* ---------- TASKS feature tasks (features/task/task.js) ----------
-     Har extra task (one-time ya repeating) bhi dashboard ke Total
-     Tasks mein gina jaye. done = us din ki occurrence tick (today
-     occur karta ho to today, warna agla occurrence / base date). */
+     Dashboard par SIRF AAJ occur karne wale tasks ginte hain
+     (upcoming / passed TASKS screen par rehte hain). done = aaj ki
+     occurrence tick. */
   function featureTasks() {
     var out = [];
     try {
@@ -83,12 +91,12 @@
       if (!TF || !TF.all) return out;
       var tdy = today();
       (TF.all() || []).forEach(function (t) {
-        var iso = TF.occursOn(t, tdy) ? tdy : (TF.nextFrom(t, tdy) || t.date);
+        if (!TF.occursOn(t, tdy)) return;
         out.push({
           title: t.name || 'Task',
           source: 'Task',
           type: (t.repeat && t.repeat.mode !== 'none') ? TF.repeatLabel(t) : 'one-time',
-          done: !!(t.done && t.done[iso]),
+          done: !!(t.done && t.done[tdy]),
           goal: ''
         });
       });

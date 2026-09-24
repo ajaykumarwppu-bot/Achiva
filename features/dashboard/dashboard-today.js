@@ -62,7 +62,11 @@
     return c;
   }
 
-  /* ---------- 1) aaj ke chapters ---------- */
+  /* ---------- 1) aaj ke chapters ----------
+     SIRF AAJ KE : start aaj ho, end aaj ho, YA chapter sach mein
+     chal raha ho (start aa chuka hai + end nahi aaya). Jin chapters
+     ki start date NAHI hai ya aani baaki hai wo "In progress"
+     NAHI dikhte — dashboard par sirf aaj ki date ka kaam. */
   function todayChapters() {
     var out = [];
     var t = today();
@@ -70,9 +74,11 @@
       (s.chapters || []).forEach(function (ch) {
         if (ch.done) return;
         var start = ch.start || '', end = ch.end || '';
-        if (start && start > t) return;          /* abhi shuru nahi hua */
-        if (end && end < t) return;              /* deadline nikal chuki (done nahi) */
-        var status = (end === t) ? 'Deadline aaj' : (start === t) ? 'Aaj start' : 'In progress';
+        var status = null;
+        if (end === t) status = 'Deadline aaj';
+        else if (start === t) status = 'Aaj start';
+        else if (start && start < t && (!end || end > t)) status = 'In progress';
+        else return;                    /* no-date / future-start / passed */
         out.push({ subject: s, ch: ch, status: status });
       });
     });
@@ -266,65 +272,55 @@
     return out;
   }
 
+  function row(it) {
+    var TF = window.TaskFeature;
+    var t = it.t, iso = it.iso;
+    var done = !!(t.done && t.done[iso]);
+    var r = el('div');
+    r.style.cssText = 'display:flex;align-items:center;gap:8px';
+    var tick = UI.roundCheck(done);
+    tick.addEventListener('click', function () {
+      TF.toggleDone(t.id, iso);
+      window.Dashboard.open();
+    });
+    r.appendChild(tick);
+    var main = el('div');
+    main.style.cssText = 'flex:1;min-width:0';
+    var nm = el('div', null, esc(t.name || 'Task'));
+    nm.style.cssText = 'font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;' +
+      'text-overflow:ellipsis;white-space:nowrap;' + (done ? 'text-decoration:line-through;opacity:.6' : '');
+    main.appendChild(nm);
+    var bits = [UI.fmtDate(iso), TF.fmtTime(t.time)];
+    if ((t.repeat || {}).mode !== 'none') bits.push(TF.repeatLabel(t));
+    var meta = el('div', null, esc(bits.join(' · ')));
+    meta.style.cssText = 'font-size:10.5px;color:var(--ash);margin-top:2px';
+    main.appendChild(meta);
+    r.appendChild(main);
+    r.appendChild(chip(t.priority || 'Medium',
+      t.priority === 'High' ? 'red' : t.priority === 'Medium' ? 'amber' : null));
+    return r;
+  }
+
   function renderTasks(scroll) {
-    scroll.appendChild(sectionTitle('Tasks'));
+    /* DASHBOARD par SIRF AAJ ke tasks : Upcoming / Passed groups
+       TASKS screen par dikhte hain, dashboard par nahi. */
+    scroll.appendChild(sectionTitle('Tasks (aaj)'));
     var c = cardWrap();
-    var groups;
-    try { groups = taskItems(); } catch (e) { groups = { today: [], up: [], past: [] }; }
-    if (!groups.today.length && !groups.up.length && !groups.past.length) {
-      c.appendChild(emptyRow('Koi task nahi — FAB → TASKS se add karo.'));
+    var list;
+    try { list = taskItems().today; } catch (e) { list = []; }
+    if (!list.length) {
+      c.appendChild(emptyRow('Aaj koi task nahi — FAB → TASKS se add karo.'));
       scroll.appendChild(c);
       return;
     }
-    var needSep = false;
-    function sep() {
-      var d = el('div');
-      d.style.cssText = 'height:1px;background:var(--line);margin:8px 0';
-      c.appendChild(d);
-    }
-    function groupLabel(txt) {
-      if (needSep) sep();
-      needSep = true;
-      var g = el('div', null, txt);
-      g.style.cssText = 'font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--slate);margin:2px 0 6px';
-      c.appendChild(g);
-    }
-    function row(it) {
-      var TF = window.TaskFeature;
-      var t = it.t, iso = it.iso;
-      var done = !!(t.done && t.done[iso]);
-      var r = el('div');
-      r.style.cssText = 'display:flex;align-items:center;gap:8px';
-      var tick = UI.roundCheck(done);
-      tick.addEventListener('click', function () {
-        TF.toggleDone(t.id, iso);
-        window.Dashboard.open();
-      });
-      r.appendChild(tick);
-      var main = el('div');
-      main.style.cssText = 'flex:1;min-width:0';
-      var nm = el('div', null, esc(t.name || 'Task'));
-      nm.style.cssText = 'font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;' +
-        'text-overflow:ellipsis;white-space:nowrap;' + (done ? 'text-decoration:line-through;opacity:.6' : '');
-      main.appendChild(nm);
-      var bits = [UI.fmtDate(iso), TF.fmtTime(t.time)];
-      if ((t.repeat || {}).mode !== 'none') bits.push(TF.repeatLabel(t));
-      var meta = el('div', null, esc(bits.join(' · ')));
-      meta.style.cssText = 'font-size:10.5px;color:var(--ash);margin-top:2px';
-      main.appendChild(meta);
-      r.appendChild(main);
-      r.appendChild(chip(t.priority || 'Medium',
-        t.priority === 'High' ? 'red' : t.priority === 'Medium' ? 'amber' : null));
-      return r;
-    }
-    function addGroup(txt, list) {
-      if (!list.length) return;
-      groupLabel(txt);
-      list.forEach(function (it, i) { if (i) sep(); c.appendChild(row(it)); });
-    }
-    addGroup('Today', groups.today);
-    addGroup('Upcoming', groups.up);
-    addGroup('Passed', groups.past);
+    list.forEach(function (it, i) {
+      if (i) {
+        var d = el('div');
+        d.style.cssText = 'height:1px;background:var(--line);margin:8px 0';
+        c.appendChild(d);
+      }
+      c.appendChild(row(it));
+    });
     scroll.appendChild(c);
   }
 
