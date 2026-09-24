@@ -170,6 +170,10 @@
       'auth/web-storage-unsupported': 'Browser storage allow nahi kar raha (WebView settings check karein).'
     };
     if (M[code]) return M[code];
+    if (/entity state|missing entity/i.test(raw)) {
+      return 'Google redirect adhoora reh gaya (WebView ne OAuth state storage block kar diya thi). ' +
+        'App update ke baad dobara try karein; phir bhi aaye to app data clear karke ek baar kholein.';
+    }
     if (/invalid-credential|wrong-password|user-not-found/i.test(raw)) return M['auth/invalid-credential'];
     if (/network|offline|fetch/i.test(raw)) return M['auth/network-request-failed'];
     if (/weak-password/i.test(raw)) return M['auth/weak-password'];
@@ -818,8 +822,12 @@
     return !!u && hasGoogleCred(u) && !hasPasswordCred(u);
   }
 
-  /* Android WebView UA mein "; wv)" hota hai */
+  /* Android WebView UA mein "; wv)" hota hai — lekin MainActivity
+     (GOOGLE-FIX) wo flag hata deta hai, isliye UA akela kaafi nahi.
+     Sabse pakka signal : APK ke andar native bridge "AchivaNative"
+     maujood hota hai (Bridge.kt). */
   function isWebView() {
+    try { if (window.AchivaNative) return true; } catch (e) { /* ignore */ }
     try {
       var nav = (typeof window !== 'undefined' && window.navigator) ? window.navigator : null;
       var ua = (nav && nav.userAgent) || '';

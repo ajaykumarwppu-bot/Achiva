@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -120,6 +121,20 @@ class MainActivity : Activity() {
             wv.settings.domStorageEnabled = true          // localStorage ✔
             wv.settings.databaseEnabled = true
             wv.settings.mediaPlaybackRequiresUserGesture = false
+
+            /* GOOGLE-FIX #2 : Firebase ka redirect handler
+               (achiva-2a6d1.firebaseapp.com/__/auth/handler) apna OAuth
+               "entity state" cookies mein rakhta hai. Android WebView
+               third-party cookies DEFAULT BLOCK karta hai, isliye Google
+               consent (Continue) ke baad white screen aati thi :
+               "failed to process request due to missing entity state…
+               session storage inaccessible". Cookies ON (first-party +
+               third-party) → redirect chain poora chalta hai. */
+            try {
+                val cm = CookieManager.getInstance()
+                cm.setAcceptCookie(true)
+                cm.setAcceptThirdPartyCookies(wv, true)
+            } catch (_: Throwable) { }
 
             /* TIMER-FIX / GOOGLE-FIX : Android WebView ka UA "; wv)" flag
                Google OAuth ko block karwata hai (disallowed_useragent).
