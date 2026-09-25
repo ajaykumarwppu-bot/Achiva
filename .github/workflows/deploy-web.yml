@@ -1,14 +1,15 @@
 name: Deploy Web
 
 on:
-  workflow_dispatch:          # manual run
+  workflow_dispatch:            # manual run
   push:
     paths:
-      - '**/index.html'       # web files kahin bhi hon (root ya folder mein)
+      - '**/index.html'         # web files kahin bhi hon (root ya folder mein)
       - '**/style/**'
       - '**/core/**'
       - '**/features/**'
       - '**/backend/**'
+      - '**/ai/**'              # ← FIX : ai folder bhi trigger kare
       - '.github/workflows/deploy-web.yml'
 
 permissions:
@@ -28,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Find web root and prepare site folder
         run: |
           REL=$(git ls-files | grep -E '(^|/)index\.html$' | head -n 1)
@@ -40,7 +40,7 @@ jobs:
           echo "✔ Web root mila: $WEB_ROOT"
           mkdir -p _site
           cp "$WEB_ROOT/index.html" _site/
-          for d in style core features backend; do
+          for d in style core features backend ai; do
             if [ -d "$WEB_ROOT/$d" ]; then
               cp -r "$WEB_ROOT/$d" _site/
             else
@@ -51,12 +51,9 @@ jobs:
           # Firebase Console ke liye hain, site par publish nahi karne
           rm -f _site/backend/firestore.rules _site/backend/FIREBASE_SETUP.md
           ls -R _site | head -40
-
       - uses: actions/configure-pages@v5
-
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
-
       - id: deployment
         uses: actions/deploy-pages@v4
