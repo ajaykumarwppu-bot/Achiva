@@ -1,6 +1,0 @@
-<resources>
-    <style name="Theme.Achiva" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#16181B</item>
-        <item name="android:navigationBarColor">#16181B</item>
-    </style>
-</resources>
