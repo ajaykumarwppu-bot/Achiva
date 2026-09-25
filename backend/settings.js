@@ -200,7 +200,10 @@
     var aiB = UI.pillBtn('AI');
     aiB.style.cssText += ';padding:7px 13px;font-size:11px;font-weight:700;flex:none';
     aiB.addEventListener('click', function () {
-      if (window.AchivaAIHubSettings) window.AchivaAIHubSettings.open();
+      if (window.AchivaAIHubSettings) { window.AchivaAIHubSettings.open(); return; }
+      var miss = (window.__ACHIVA_LOAD_ERRORS || []).join(', ');
+      setBanner('AI module load nahi hua' + (miss ? ' (missing: ' + miss + ')' : '') +
+        ' — page reload karo; deploy/copy mein ai/ folder ki files check karo.');
     });
     head.appendChild(aiB);
     var h3 = document.createElement('b');

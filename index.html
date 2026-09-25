@@ -207,8 +207,12 @@
         var s = document.createElement('script');
         s.src = SRC[i];
         s.onload = function () { loadNext(i + 1); };
-        /* ek file 404 ho to baaki app na ruke (pehle bhi parser aage badhta tha) */
-        s.onerror = function () { loadNext(i + 1); };
+        /* ek file 404 ho to baaki app na ruke — LEKIN naav record ho taaki
+           AI buttons waghaira "silent dead" na lagein */
+        s.onerror = function () {
+          (window.__ACHIVA_LOAD_ERRORS = window.__ACHIVA_LOAD_ERRORS || []).push(SRC[i]);
+          loadNext(i + 1);
+        };
         document.head.appendChild(s);
       }
       function tryStart() {

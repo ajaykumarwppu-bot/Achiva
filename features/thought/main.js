@@ -372,7 +372,10 @@
     var aiB = UI.pillBtn('AI');
     aiB.style.cssText += ';padding:8px 12px;font-size:11.5px;font-weight:700';
     aiB.addEventListener('click', function () {
-      if (window.ThoughtAI && window.ThoughtAI.openChoose) window.ThoughtAI.openChoose();
+      if (window.ThoughtAI && window.ThoughtAI.openChoose) { window.ThoughtAI.openChoose(); return; }
+      var miss = (window.__ACHIVA_LOAD_ERRORS || []).join(', ');
+      statusLine('AI module load nahi hua' + (miss ? ' (missing: ' + miss + ')' : '') +
+        ' — reload karo; ai/ folder ki files check karo.');
     });
     head.appendChild(aiB);
     var kgB = UI.pillBtn('Knowledge Graph');

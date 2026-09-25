@@ -547,7 +547,18 @@
     var api = E();
     if (!api || !api.getCanvas || !api.getCanvas()) return;   /* editor khula hi nahi */
     if (api.readOnly && api.readOnly()) return;              /* read-only mein band */
-    if (!H()) return;                                        /* ai/ engine load nahi hua */
+    if (!H()) {
+      /* ai/ engine load nahi hua — chup rehne ke bajaye batao */
+      var miss = (window.__ACHIVA_LOAD_ERRORS || []).join(', ');
+      var m0 = UI.modal({ zScrim: 96, zWrap: 97 });
+      m0.open('AI module missing', function (body) {
+        var d = el('div', null, 'AI engine (ai/ folder) load nahi hua' +
+          (miss ? ' — missing: ' + miss : '') + '. Page reload karo ya deployment/copy mein ai/ folder ki files check karo.');
+        d.style.cssText = 'font-size:12px;line-height:1.7;color:var(--ink2)';
+        body.appendChild(d);
+      }, null);
+      return;
+    }
     var act = document.querySelector('section.screen.active');
     if (act && act !== aiScreen) openerScreen = act;
     if (!aiScreen) buildScreen();
