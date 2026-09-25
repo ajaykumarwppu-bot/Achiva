@@ -76,9 +76,9 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
             <span style="font-size:8px;font-weight:700;letter-spacing:.08em">DASH</span>
           </button>
-          <button class="mitem" data-key="cal" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">CAL</span>
+          <button class="mitem" data-key="thought" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 1 6 6c0 2.2-1.2 3.7-2.5 5H8.5C7.2 12.7 6 11.2 6 9a6 6 0 0 1 6-6z"/><path d="M9 18h6M10 21h4"/></svg>
+            <span style="font-size:8px;font-weight:700;letter-spacing:.08em">THOUGHT</span>
           </button>
           <button class="mitem" data-key="subs" type="button" style="display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;padding:9px 0;border-radius:14px;border:1px solid var(--line);background:var(--mi-bg);cursor:pointer;font:inherit;color:var(--ink2)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
@@ -147,7 +147,9 @@
       /* ORIGINAL load order — wahi jo pehle static tags tha */
       var SRC = [
         'core/ui.js',
-        'core/ai-client.js',
+        'ai/engine.js',
+        'ai/audio.js',
+        'ai/settings.js',
         'features/dashboard/dashboard.js',
         'features/dashboard/dashboard-today.js',
         'features/subject tracker/subject-store.js',
@@ -184,6 +186,11 @@
         'features/habit/challenge-list.js',
         'features/habit/good-detail.js',
         'features/habit/good-system-scenarios.js',
+        'features/thought/store.js',
+        'features/thought/graph.js',
+        'features/thought/main.js',
+        'features/thought/detail.js',
+        'features/thought/ai.js',
         'features/task/task.js',
         'backend/email-config.js',
         'backend/firebase-config.js',
