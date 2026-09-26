@@ -35,6 +35,22 @@
        nahi hota. Node drag ke dauraan tree se detach rehta hai →
        apne hi andar drop karna impossible. Data format wahi purana
        nested children hai (kuch migrate nahi karna pada).
+     • LIVE NUMBER ON GHOST : hover hote hi card ka level-number bhi
+       ghost ke saath udta hai aur drop-target ke hisaab se LIVE
+       badalta hai — 13 ke upar le jao to "13", card 13 (jiske 3
+       sub hain) ke neeche right-slide karo to "13.4", bina sub
+       wale 14 ke neeche "14.1", 3rd level+ par "•". Drag ke dauraan
+       baaki cards ke numbers FIXED rehte hain; drop hote hi poori
+       list apne aap renumber ho jati hai (numbers positional hain).
+     • PHONE-FIX : Android par long-press ke baad ghost finger ke
+       saath move nahi karta tha (finger utha kar dobara touch karna
+       padta tha). Wajah — touchstart ka target row re-render mein
+       DOM se detach ho jata tha, aur Android browser aage ke
+       touchmove/touchend usi detached node par bhejta hai (document
+       tak pahunchte hi nahi). Ab pressed row drag khatam hone tak ek
+       invisible holder mein connected rehta hai + long-press ke
+       waqt ke chhote jitter preventDefault hote hain (compositor
+       scroll gesture "steal" na kar le). Laptop/mouse path untouched.
    Data chapter.topics mein save hota hai aur core/storage.js
    (window.AppStorage) ke through persist hota hai.
    List.js ke bottom tab se hook : window.Topic.renderChapterView.
@@ -322,6 +338,7 @@
     if (mark) {
       var num = el('div', null, mark);
       num.setAttribute('aria-hidden', 'true');
+      num.setAttribute('data-num', '1');   /* drag-ghost ka live number hook */
       num.style.cssText = 'position:absolute;right:calc(100% + 5px);top:12px;height:22px;' +
         'line-height:22px;white-space:nowrap;pointer-events:none;color:var(--ash);' +
         (depth >= 3
@@ -360,6 +377,11 @@
        (main topic par left = kuch nahi). Level SIRF horizontal
        slide se decide hota hai — card par drop karne se apne aap
        nesting NAHI hoti.
+     • Ghost ka LEVEL NUMBER saath chalta hai aur drop-target ke
+       hisaab se LIVE update hota hai (previewLabel) : "13" /
+       "13.4" / "•" — yaani drop ke baad jo number render hoga wahi
+       drag ke waqt dikhta hai. Baaki rows ke numbers drag ke dauraan
+       change NAHI hote (drop par poori list renumber).
      • Poora subtree hamesha saath chalta hai. Node drag ke dauraan
        tree se DETACHED rehta hai → apne hi descendant ke andar drop
        karna structurally impossible.
@@ -371,6 +393,11 @@
        Cancel (touchcancel / screen switch) = origin par wapas,
        bina persist.
      • Drop ke baad ~400ms click-guard : accidental tap swallow.
+     • PHONE-FIX : pressed row (touchstart target) drag ke dauraan ek
+       invisible holder mein CONNECTED rehta hai, warna Android aage
+       ke touchmove/touchend detached node par bhej kar ghost ko
+       freeze kar deta tha. Long-press pending ke chhote jitter bhi
+       preventDefault hote hain (compositor gesture steal na kare).
      • Test seam : window.__TOPIC_DND_TEST (pure helpers + program-
        matic drag) — jsdom mein layout zero hota hai isliye real
        touch ki jagah seam se drive karte hain.
@@ -462,6 +489,32 @@
     return c;
   }
 
+  /* LIVE PREVIEW NUMBER : (gap, depth) → wo number jo drop ke BAAD is
+     card par render hoga — bilkul wahi rule jo drawRows use karta hai.
+       depth 1 → "13"      (gap se pehle kitne depth-1 rows hain + 1)
+       depth 2 → "13.4"    (parent = gap se peeche nearest depth-1 row;
+                            4 = us parent ke neeche gap se pehle dikhne
+                            wale depth-2 rows + 1)
+       depth 3+ → "•"      (render mein bhi 3rd level par bullet hi hota hai)
+     Drag ke dauraan baaki rows ke numbers FIXED rehte hain (user ka rule:
+     sirf uthaya gaya card apna naya number dikhata hai); drop hote hi poori
+     list positional renumber ho jaati hai. */
+  function previewLabel(infos, gap, depth) {
+    var g = gap < 0 ? 0 : Math.min(gap, infos.length);
+    if (depth <= 1) return String(countBefore(infos, g, 1) + 1);
+    if (depth === 2) {
+      var p = -1;
+      for (var i = g - 1; i >= 0; i--) {
+        if (infos[i].depth === 1) { p = i; break; }
+      }
+      if (p < 0) return String(countBefore(infos, g, 1) + 1);
+      var sub = 0;
+      for (var j = p + 1; j < g; j++) if (infos[j].depth === 2) sub++;
+      return countBefore(infos, p + 1, 1) + '.' + (sub + 1);
+    }
+    return '•';
+  }
+
   /* (gap, depth) → {parentTid|null, index} : parent = gap se peeche
      nearest row jo depth-1 par ho; index = us parent ke utne children
      jo gap se pehle dikhte hain (DFS guarantee se wahi aage bhi count
@@ -542,14 +595,15 @@
     closePops();
     var rect = rowEl.getBoundingClientRect();
 
-    /* ghost : row ka clone (pops + level marker hata kar) */
+    /* ghost : row ka clone — sirf pops hatate hain. Level number
+       (1 / 13.4 / •) ghost ke SAATH chalta hai aur drop-target ke
+       hisaab se LIVE badalta hai. */
     var ghost = rowEl.cloneNode(true);
     var pops = ghost.querySelectorAll('.pop');
     for (var i = 0; i < pops.length; i++) {
       if (pops[i].parentNode) pops[i].parentNode.removeChild(pops[i]);
     }
-    var mk = ghost.querySelector('[aria-hidden="true"]');
-    if (mk && mk.parentNode) mk.parentNode.removeChild(mk);
+    var ghostNum = ghost.querySelector('[data-num]');
     ghost.removeAttribute('data-tid');
     ghost.style.position = 'fixed';
     ghost.style.left = rect.left + 'px';
@@ -564,12 +618,41 @@
     ghost.style.willChange = 'transform';
     document.body.appendChild(ghost);
 
+    /* ============================================================
+       PHONE-FIX (Android Chrome / WebView) — "ghost wahin atak jata
+       hai, finger utha kar dobara touch karna padta hai"
+       ------------------------------------------------------------
+       Touch events ka target WO element hota hai jis par touchstart
+       hua tha, aur browser use touch sequence ke dauraan BADALTA
+       NAHI. Hum drag shuru hote hi rerender() karte hain, jisme
+       pressed row DOM se detach ho jati thi → Android aage ke
+       touchmove / touchend usi DETACHED node par bhejta raha, wo
+       document tak pahunchte hi nahi the → hamare listeners ko kuch
+       mila hi nahi → ghost freeze. (Laptop par mouse events har baar
+       hit-test hote hain, isliye wahan sab sahi chalta tha —
+       Chromium issue 41161160 yahi behaviour document karta hai.)
+       Fix : pressed row ko drag khatam hone tak ek hidden holder
+       mein CONNECTED rakho, taaki touchmove/touchend bubble ho kar
+       document tak pahunchte rahen. Holder invisible + zero-size +
+       pointer-events:none → layout/UX par ZERO asar, aur container
+       ke bahar hone se rowInfos() (container-scoped) ise ignore
+       karta hai.
+       ============================================================ */
+    var holder = el('div');
+    holder.setAttribute('aria-hidden', 'true');
+    holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;' +
+      'overflow:hidden;visibility:hidden;opacity:0;pointer-events:none';
+    if (rowEl.parentNode) rowEl.parentNode.removeChild(rowEl);
+    holder.appendChild(rowEl);
+    document.body.appendChild(holder);
+
     /* node ko tree se detach karo — drag ke dauraan list bina uske
        render hoti hai (apne-descendant par drop impossible) */
     removeNode(chapter.topics, node.id);
     dnd = {
       node: node, id: node.id, startDepth: depth, subMax: subMaxDepth(node),
       origin: loc, ghost: ghost, ph: null, raf: 0,
+      numEl: ghostNum, holder: holder, srcRow: rowEl,
       startX: x, startY: y, px: x, py: y, touch: !!touch,
       gap: -1, depth: -1
     };
@@ -592,6 +675,17 @@
     } catch (e) { }
   }
 
+  /* ghost ka level-number LIVE update : text + size (bullet chhota,
+     number thoda bold taaki drag ke waqt saaf dikhe) */
+  function setGhostNum(label, depth) {
+    var g = dnd && dnd.numEl;
+    if (!g) return;
+    if (g.textContent !== label) g.textContent = label;
+    g.style.fontSize = depth >= 3 ? '9px' : '10.5px';
+    g.style.fontWeight = depth >= 3 ? '400' : '700';
+    g.style.color = depth >= 3 ? 'var(--ash)' : 'var(--ink2)';
+  }
+
   function placeGap(infos, gap, d) {
     var ph = dnd.ph;
     ph.style.marginLeft = (18 + (d - 1) * 14) + 'px';
@@ -602,6 +696,7 @@
     });
     dnd.gap = gap;
     dnd.depth = d;
+    setGhostNum(previewLabel(infos, gap, d), d);   /* number ghost ke saath */
   }
 
   function moveDrag(x, y) {
@@ -641,6 +736,8 @@
   function cleanupDom(d) {
     if (d.ghost && d.ghost.parentNode) d.ghost.parentNode.removeChild(d.ghost);
     if (d.ph && d.ph.parentNode) d.ph.parentNode.removeChild(d.ph);
+    /* PHONE-FIX : hidden holder (pressed row ka touch-event anchor) hatao */
+    if (d.holder && d.holder.parentNode) d.holder.parentNode.removeChild(d.holder);
     if (container && container.classList) container.classList.remove('tp-nosel');
   }
 
@@ -703,8 +800,16 @@
     }
     if (lpPending && lpPending.touch) {
       var t2 = e.touches && e.touches[0];
-      if (t2 && (Math.abs(t2.clientX - lpPending.x) > SLOP ||
-                 Math.abs(t2.clientY - lpPending.y) > SLOP)) cancelLP();
+      if (!t2) return;
+      var mx = Math.abs(t2.clientX - lpPending.x);
+      var my = Math.abs(t2.clientY - lpPending.y);
+      if (mx > SLOP || my > SLOP) { cancelLP(); return; }   /* scroll jeeta */
+      /* LONG-PRESS BACHAO (PHONE-FIX #2) : slop ke andar ke chhote jitter ko
+         prevent karo — warna Android compositor use scroll gesture maan kar
+         poori touch sequence "steal" kar leta hai aur touchcancel bhej kar
+         long-press maar deta hai. 3px se kam movement par kuch nahi karte,
+         isliye normal tap ka click kabhi suppress nahi hota. */
+      if (e.cancelable && (mx > 3 || my > 3)) e.preventDefault();
     }
   }, { passive: false });
 
@@ -751,11 +856,25 @@
     computeGap: computeGap,
     clampDepth: clampDepth,
     resolveInsert: resolveInsert,
+    previewLabel: previewLabel,
     isDragging: function () { return !!dnd; },
     state: function () {
       return dnd ? { id: dnd.id, gap: dnd.gap, depth: dnd.depth, subMax: dnd.subMax } : null;
     },
     gapEl: function () { return dnd ? dnd.ph : null; },
+    ghostEl: function () { return dnd ? dnd.ghost : null; },
+    /* ghost par LIVE dikh raha level-number (1 / 13.4 / •) */
+    ghostNum: function () { return dnd && dnd.numEl ? dnd.numEl.textContent : null; },
+    ghostNumDepthStyle: function () {
+      return dnd && dnd.numEl ? dnd.numEl.style.fontSize : null;
+    },
+    /* PHONE-FIX guard : touchstart ka target row drag ke dauraan document
+       se CONNECTED rehna chahiye (warna Android touchmove bhejna band) */
+    srcConnected: function () {
+      return dnd && dnd.srcRow ? !!(dnd.srcRow.isConnected ||
+        (dnd.srcRow.ownerDocument && dnd.srcRow.ownerDocument.contains(dnd.srcRow))) : null;
+    },
+    holderEl: function () { return dnd ? dnd.holder : null; },
     begin: function (id, x, y) {
       if (!container || dnd) return false;
       var rowEl = container.querySelector('[data-tid="' + id + '"]');
