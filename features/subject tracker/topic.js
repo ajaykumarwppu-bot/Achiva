@@ -7,6 +7,12 @@
      • Parent-child tree : har topic ke andar sub-topics, unke
        andar aur sub-topics ... maximum 6 layers (recursive render,
        simple & halka code)
+     • Level numbers : har card ke LEFT (khaali gutter space) mein
+       main topics → 1, 2, 3... aur sub-topics → 1.1, 1.2, 2.1...
+       3rd level aur gehre par sirf chhota bullet (•). Number
+       absolute-positioned hai → card ki height/width/padding/margin
+       par ZERO asar. Numbers render-time positional hain (kuch
+       save nahi hota), add/delete par apne aap renumber ho jaate.
      • Har node (kisi bhi layer ka) ke liye:
        - + button se usi layer ke multiple sub-topics add karo
          (popup mein ek line = ek sub-topic)
@@ -215,7 +221,7 @@
 
   var smallBtn = UI.miniBtn;
 
-  function nodeRow(n, depth) {
+  function nodeRow(n, depth, marker) {
     var row = el('div');
     row.style.cssText = 'position:relative;display:flex;align-items:flex-start;gap:9px;' +
       'padding:10px 10px 10px 12px;border:1px solid var(--line);border-radius:12px;' +
@@ -289,6 +295,24 @@
     row.appendChild(ctr);
     row.appendChild(tagPop);
     row.appendChild(kebabPop);
+
+    /* level number (1 / 1.1) ya bullet (3rd level+) : card ke LEFT
+       gutter (khaali side space) mein absolute — card ki geometry
+       (height/width/padding/margin/gap) par ZERO asar, koi reflow
+       nahi. right:calc(100% + 5px) → number card se ~4px bahar,
+       right-aligned; top:12px + line-height:22px → tick circle ke
+       center se aligned. pointer-events:none → taps block nahi. */
+    var mark = depth >= 3 ? '•' : (marker || '');
+    if (mark) {
+      var num = el('div', null, mark);
+      num.setAttribute('aria-hidden', 'true');
+      num.style.cssText = 'position:absolute;right:calc(100% + 5px);top:12px;height:22px;' +
+        'line-height:22px;white-space:nowrap;pointer-events:none;color:var(--ash);' +
+        (depth >= 3
+          ? 'font-size:9px'
+          : 'font-size:10px;font-weight:600;font-variant-numeric:tabular-nums');
+      row.appendChild(num);
+    }
     return row;
   }
 
@@ -466,9 +490,19 @@
       return;
     }
 
-    walk(chapter.topics, function (n, depth) {
-      container.appendChild(nodeRow(n, depth));
-    }, 1);
+    /* numbered tree walk : depth 1 → "1","2"... ; depth 2 → "1.1","2.3"...
+       depth 3+ → bullet nodeRow mein. Numbers render-time POSITIONAL hain
+       (kuch save nahi hota), add/delete/edit par apne aap renumber. */
+    (function drawRows(nodes, prefix, depth) {
+      nodes.forEach(function (n, i) {
+        ensureNode(n);
+        var label = depth === 1 ? String(i + 1)
+          : depth === 2 ? prefix + '.' + (i + 1)
+          : '';
+        container.appendChild(nodeRow(n, depth, label));
+        drawRows(n.children, depth === 1 ? String(i + 1) : prefix, depth + 1);
+      });
+    })(chapter.topics, '', 1);
   }
 
   function rerender() {
