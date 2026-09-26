@@ -10,6 +10,9 @@
                 kare (app name + start + end), localStorage mein
    • Refresh button : dobara fetch (koi background polling nahi)
    • App row expand karo → saari sessions ki ranges dikhti hain
+   • Study Sessions panel (SESSION-CAT): last 7 din ke timer sessions,
+       din/date ke hisaab se grouped — har session mein start–end time
+       aur category chip (Learning/Practice/Revision/Notes/Other)
    ================================================================ */
 
 (function () {
@@ -50,6 +53,19 @@
   function fmtClock(ms) {
     var d = new Date(ms);
     return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  /* SESSION-CAT: study-session groups ka din-label — "Aaj · Wed 24 Sep" */
+  var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MON_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function dayLabel(midnightMs) {
+    var t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    var diff = Math.round((t0.getTime() - midnightMs) / 86400000);
+    var d = new Date(midnightMs);
+    var base = DAY_NAMES[d.getDay()] + ' ' + d.getDate() + ' ' + MON_NAMES[d.getMonth()];
+    if (diff === 0) return 'Aaj · ' + base;
+    if (diff === 1) return 'Kal · ' + base;
+    return base;
   }
   function minsBetween(a, b) {
     var pa = a.split(':'), pb = b.split(':');
@@ -178,29 +194,72 @@
       apps.reduce(function (s, a) { return s + a.sessions.length; }, 0) + ' sessions'));
     wrap.appendChild(tp);
 
-    /* ---------- study sessions (chapter study timer ka data) ---------- */
+    /* ---------- study sessions (chapter study timer ka data) ----------
+       SESSION-CAT: ab har session ke saath category + start–end (din/date
+       ke saath) dikhta hai. Last 7 din, din-wise group (naya din pehle). */
     var SKEY = 'achiva.timer.study.v1';
     var study = window.AppStorage.loadAt(SKEY);
     if (!Array.isArray(study)) study = [];
     var todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    var todayStudy = study.filter(function (e) { return e.startMs >= todayStart.getTime(); });
-    if (todayStudy.length) {
+    var weekStart = todayStart.getTime() - 6 * 86400000;
+    var recent = study.filter(function (e) {
+      return typeof e.startMs === 'number' && e.startMs >= weekStart;
+    });
+    if (recent.length) {
       var sp2 = UI.panel();
       sp2.appendChild(UI.panelTitle('Study Sessions'));
+      var todayStudy = recent.filter(function (e) { return e.startMs >= todayStart.getTime(); });
       var stMs = todayStudy.reduce(function (a, b) { return a + (b.ms || 0); }, 0);
-      sp2.appendChild(el('div', 'sub-meta', 'Aaj ka study time : ' + fmtMs(stMs)));
-      todayStudy.slice().reverse().forEach(function (e) {
-        var row = el('div');
-        row.style.cssText = 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;' +
-          'font-size:12px;color:var(--ink2);border-top:1px solid var(--line);margin-top:5px';
-        var d0 = new Date(e.startMs);
-        var lbl = e.subjectName
-          ? (e.subjectName + (e.chapterName ? ' \u2192 ' + e.chapterName : ''))
-          : (e.label || 'Study');
-        row.appendChild(el('span', null,
-          esc(lbl) + ' \u00b7 ' + d0.getHours() + ':' + String(d0.getMinutes()).padStart(2, '0')));
-        row.appendChild(el('span', 'sub-meta', fmtMs(e.ms)));
-        sp2.appendChild(row);
+      sp2.appendChild(el('div', 'sub-meta',
+        'Aaj ka study time : ' + fmtMs(stMs) + ' · ' + todayStudy.length + ' sessions'));
+
+      /* din-wise groups banao (sessions nayi→purani) */
+      var groups = [], byDay = {};
+      recent.slice().sort(function (a, b) { return b.startMs - a.startMs; })
+        .forEach(function (e) {
+          var d0 = new Date(e.startMs); d0.setHours(0, 0, 0, 0);
+          var k = d0.getTime();
+          if (!byDay[k]) { byDay[k] = { day: k, items: [] }; groups.push(byDay[k]); }
+          byDay[k].items.push(e);
+        });
+
+      groups.forEach(function (g) {
+        var dayHead = el('div', 'eyebrow', dayLabel(g.day));
+        dayHead.style.margin = '10px 0 2px';
+        sp2.appendChild(dayHead);
+        var dayMs = g.items.reduce(function (a, b) { return a + (b.ms || 0); }, 0);
+        var daySum = el('div', 'sub-meta', 'Total : ' + fmtMs(dayMs) + ' · ' + g.items.length + ' sessions');
+        sp2.appendChild(daySum);
+        g.items.forEach(function (e) {
+          var row = el('div');
+          row.style.cssText = 'padding:6px 0;border-top:1px solid var(--line);' +
+            'margin-top:5px;font-size:12px;color:var(--ink2)';
+          /* line 1 : subject → chapter  ...  duration */
+          var l1 = el('div');
+          l1.style.cssText = 'display:flex;justify-content:space-between;gap:10px';
+          var lbl = e.subjectName
+            ? (e.subjectName + (e.chapterName ? ' \u2192 ' + e.chapterName : ''))
+            : (e.label || 'Study');
+          l1.appendChild(el('span', null, esc(lbl)));
+          l1.appendChild(el('span', 'sub-meta', fmtMs(e.ms)));
+          row.appendChild(l1);
+          /* line 2 : start – end  ...  category chip */
+          var l2 = el('div');
+          l2.style.cssText = 'display:flex;justify-content:space-between;gap:10px;' +
+            'align-items:center;margin-top:3px';
+          var endV = (typeof e.endMs === 'number' && e.endMs > e.startMs)
+            ? e.endMs : (e.startMs + (e.ms || 0));
+          l2.appendChild(el('span', 'sub-meta',
+            fmtClock(e.startMs) + ' \u2013 ' + fmtClock(endV)));
+          var catTxt = (window.ST && ST.catLabel && e.cat) ? ST.catLabel(e.cat) : 'Uncategorized';
+          var catB = el('span', null, catTxt);
+          catB.style.cssText = 'font-size:10.5px;font-weight:700;padding:2px 9px;' +
+            'border-radius:99px;border:1px solid var(--s2);background:var(--chip-bg);' +
+            'color:var(--ink2);flex:none';
+          l2.appendChild(catB);
+          row.appendChild(l2);
+          sp2.appendChild(row);
+        });
       });
       wrap.appendChild(sp2);
     }

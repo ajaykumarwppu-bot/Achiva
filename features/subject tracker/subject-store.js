@@ -50,9 +50,29 @@
 
   var app = document.getElementById('app');
 
+  /* ================================================================
+     SESSION-CAT : study-session categories
+     Har timer/stopwatch session ek category ke saath save hota hai.
+     Storage mein sirf `cat` (id) jata hai; label UI mein dikhta hai.
+     Purane (bina-cat) records ka cat null hai → UI "Uncategorized".
+  ================================================================ */
+  var CATS = [
+    { id: 'learn', label: 'Learning', full: 'Learning — concepts samajhna' },
+    { id: 'practice', label: 'Practice', full: 'Practice — test / questions solve' },
+    { id: 'revision', label: 'Revision', full: 'Revision — padha hua dohrana' },
+    { id: 'notes', label: 'Notes', full: 'Notes — notes banana' },
+    { id: 'other', label: 'Other', full: 'Other' }
+  ];
+  function catById(id) {
+    if (!id) return null;
+    for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i];
+    return null;
+  }
+  function catLabel(id) { var c = catById(id); return c ? c.label : ''; }
+
   /* (duplicate STUDY_KEY/studyContext declarations hata diye — TIMER-FIX:
      upar wala restore na toote) */
-  function recordStudy(ms, startMs, sessionId) {
+  function recordStudy(ms, startMs, sessionId, cat) {
     if (!(ms >= 1000)) return;               /* NaN/negative/1s-se-kam guard */
     var d = window.AppStorage.loadAt(STUDY_KEY) || [];
     if (!Array.isArray(d)) d = [];
@@ -65,6 +85,8 @@
       subjectName: c.subjectName || '',
       chapterId: c.chapterId || null,
       chapterName: c.chapterName || '',
+      cat: catById(cat) ? cat : null,        /* SESSION-CAT: unknown/blank → null */
+      /* startMs/endMs = epoch ms → din/date/time sab isi se nikalta hai */
       startMs: startMs, endMs: startMs + ms, ms: ms
     });
     window.AppStorage.saveAt(STUDY_KEY, d);
@@ -114,6 +136,10 @@
     studyStore: studyStore,
     studyMsForChapter: studyMsForChapter,
     studyMsForSubject: studyMsForSubject,
-    fmtHMS: fmtHMS
+    fmtHMS: fmtHMS,
+    /* SESSION-CAT */
+    CATS: CATS,
+    catById: catById,
+    catLabel: catLabel
   };
 })();

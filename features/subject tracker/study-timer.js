@@ -19,6 +19,12 @@
        heuristic) — jaayaz sessions ab drop nahi hote.
      • ELAPSED CAP (Bug E): countdown mode mein recorded ms kabhi
        countdownMs se zyada nahi (freeze ke baad inflation band).
+
+   SESSION-CAT (category tagging):
+     • Countdown START par 5-category popup (bina category start nahi).
+     • Stopwatch STOP+SAVE par popup (skip → bina category save).
+     • Category session record (`cat`) + RUN_KEY mein persist — reload/
+       native-save/reconcile ke baad bhi sahi category ke saath save.
   ================================================================ */
 
 (function () {
@@ -30,7 +36,7 @@
   var ST = window.ST;
   var ICON_CLOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
-  var studyState = null;   /* { mode:'count'|'stop', countdownMs, startEpoch, accMs, running } */
+  var studyState = null;   /* { mode:'count'|'stop', countdownMs, startEpoch, accMs, running, cat } */
   var studyTick = null;
   var RUN_KEY = 'achiva.timer.running.v1';   /* TIMER-FIX: chalte timer ka persist point */
   var sessionId = null;                      /* TIMER-FIX: har session ki unique id (dedupe) */
@@ -50,6 +56,58 @@
 
   var studyContext = null;   /* (legacy, unused — context subject-store.js mein hai) */
 
+  /* ================================================================
+     SESSION-CAT : CATEGORY PICKER POPUP (5 categories)
+     • COUNTDOWN  : Start dabate hi PEHLE category poochhte hain —
+                    category chune bina countdown start hi nahi hota.
+     • STOPWATCH  : Start par kuch nahi poochhte; "Stop + Save" par
+                    popup aata hai (skip bhi kar sakte hain — time to
+                    spend ho chuka, isliye bina-category bhi save hota).
+     ================================================================ */
+  var CAT_ICONS = { learn: '\ud83d\udcd6', practice: '\u270d\ufe0f', revision: '\ud83d\udd01', notes: '\ud83d\uddd2\ufe0f', other: '\ud83d\udccc' };
+  var catModal = UI.modal({ zScrim: 93, zWrap: 94 });   /* timer-popup (91/92) ke upar */
+
+  function openCatPicker(opts) {
+    /* opts: { title, subtitle, skipLabel, onPick(catId|null), onDismiss() } */
+    var done = false;
+    function pick(cat) {
+      if (done) return; done = true;
+      catModal.close();
+      try { opts.onPick(cat); } catch (e) { }
+    }
+    function dismiss() {
+      if (done) return; done = true;
+      try { if (opts.onDismiss) opts.onDismiss(); } catch (e) { }
+    }
+    catModal.open(opts.title || 'Category chuno', function (body) {
+      if (opts.subtitle) {
+        var s = el('div', 'sub-meta', opts.subtitle);
+        s.style.marginBottom = '10px';
+        body.appendChild(s);
+      }
+      ((ST && ST.CATS) || []).forEach(function (c) {
+        var b = UI.solidBtn((CAT_ICONS[c.id] ? CAT_ICONS[c.id] + '  ' : '') + c.label);
+        b.setAttribute('data-cat', c.id);
+        b.style.marginBottom = '8px';
+        b.addEventListener('click', function () { pick(c.id); });
+        body.appendChild(b);
+      });
+      if (opts.skipLabel) {
+        var sk = UI.pillBtn(opts.skipLabel);
+        sk.setAttribute('data-cat-skip', '1');
+        sk.style.marginTop = '2px';
+        sk.addEventListener('click', function () { pick(null); });
+        body.appendChild(sk);
+      }
+    }, null);
+    /* scrim / Cancel click = bina category band → dismiss */
+    var wrapEl = catModal.sheet.parentElement;
+    var scrimEl = wrapEl && wrapEl.previousElementSibling;
+    if (scrimEl) scrimEl.addEventListener('click', dismiss);
+    var cancelB = catModal.sheet.querySelector('.sheet-actions .btn-ghost');
+    if (cancelB) cancelB.addEventListener('click', dismiss);
+  }
+
   /* TIMER-FIX: chalte timer ka state storage mein mirror karo */
   function persistRunning() {
     try {
@@ -58,6 +116,7 @@
         v: 1, sessionId: sessionId,
         mode: studyState.mode, countdownMs: studyState.countdownMs,
         startEpoch: studyState.startEpoch, accMs: studyState.accMs,
+        cat: studyState.cat || null,   /* SESSION-CAT: reload ke baad bhi category zinda */
         sessionStart: studyState.sessionStart || studyState.startEpoch,
         running: studyState.running, savedAt: Date.now()
       });
@@ -103,12 +162,46 @@
     };
   }
 
-  function studyStart(mode, countdownMs) {
+  /* SESSION-CAT: RUN_KEY mein persisted category (reload/native-save ke waqt
+     jab web studyState khali ho — best effort, sessionId match par hi) */
+  function runKeyCat(forSid) {
+    try {
+      var rs = window.AppStorage.loadAt(RUN_KEY);
+      if (!rs || !rs.cat) return null;
+      if (forSid && rs.sessionId && rs.sessionId !== forSid) return null;
+      return String(rs.cat);
+    } catch (e) { return null; }
+  }
+
+  var catPickOpen = false;   /* countdown-start picker dobara na khule */
+
+  function studyStart(mode, countdownMs, cat) {
+    /* SESSION-CAT: countdown start par PEHLE 5-category popup —
+       category chune bina countdown start nahi hota.
+       Stopwatch start par kuch nahi poochhte (Stop+Save par poochenge). */
+    if (mode === 'count' && !cat && !catPickOpen) {
+      catPickOpen = true;
+      openCatPicker({
+        title: 'Countdown kis liye hai?',
+        subtitle: 'Category chuno — ye session isi mein save hoga.',
+        onPick: function (c) {
+          catPickOpen = false;
+          studyStart('count', countdownMs, c || 'other');
+        },
+        onDismiss: function () { catPickOpen = false; }   /* cancel = start nahi */
+      });
+      return;
+    }
+    doStudyStart(mode, countdownMs, cat || null);
+  }
+
+  function doStudyStart(mode, countdownMs, cat) {
     ensureAudio();          /* user-gesture : baad mein alarm-beep autoplay ke liye */
     var n = nativeTimer();
     sessionId = uid();      /* TIMER-FIX: dedupe ab exact id se hoga */
     studyState = {
       mode: mode, countdownMs: countdownMs || 0,
+      cat: mode === 'count' ? (cat || null) : null,   /* SESSION-CAT */
       startEpoch: Date.now(), accMs: 0, running: true,
       sessionStart: Date.now()   /* TIMER-FIX: true session start (pause/resume
                                     se change nahi hota; record ka startMs yahi hai) */
@@ -163,7 +256,9 @@
         var startMs = (typeof st.startEpochMs === 'number' && st.startEpochMs > 0)
           ? st.startEpochMs : (Date.now() - ms);
         if (!alreadyRecorded(ms, startMs, sessionId)) {
-          ST.recordStudy(ms, startMs, sessionId);
+          /* SESSION-CAT: countdown complete → start waali chuni hui category */
+          ST.recordStudy(ms, startMs, sessionId,
+            (studyState && studyState.cat) || runKeyCat(sessionId));
         }
         studyState = null; sessionId = null; clearRunning();
         refreshSafe();
@@ -204,10 +299,29 @@
     var startMs = (typeof st.startEpochMs === 'number' && st.startEpochMs > 0)
       ? st.startEpochMs : (Date.now() - ms);
     if (n) { try { n.timerStop(); } catch (e) { } }
-    ST.recordStudy(ms, startMs, sessionId);
+    /* SESSION-CAT: stopwatch → Stop+Save par category popup (skip allowed,
+       kyunki time spend ho chuka — save to hona hi hai).
+       countdown → start par chuni category hi use hoti hai. */
+    var sid = sessionId;
+    var isStopwatch = !!(studyState && studyState.mode === 'stop');
+    var catKnown = (studyState && studyState.cat) || runKeyCat(sid);
     studyState = null; sessionId = null; clearRunning();
-    refreshSafe();
-    paintPopup();
+    function save(cat) {
+      if (!alreadyRecorded(ms, startMs, sid)) ST.recordStudy(ms, startMs, sid, cat);
+      refreshSafe();
+      paintPopup();
+    }
+    if (isStopwatch && ms >= 1000) {
+      openCatPicker({
+        title: 'Session kis category mein save karein?',
+        subtitle: 'Stopwatch ka ' + ST.fmtHMS(ms) + ' save ho raha hai.',
+        skipLabel: 'Bina category save karo',
+        onPick: function (c) { save(c || null); },
+        onDismiss: function () { save(null); }   /* scrim/Cancel → bina cat save */
+      });
+    } else {
+      save(catKnown);
+    }
   }
 
   /* ================================================================
@@ -315,7 +429,12 @@
       sid = sid ? String(sid) : null;
       /* agar web ne pehle hi ye session record kar liya hai to dobara mat save karo */
       if (!alreadyRecorded(ms, startMs, sid)) {
-        ST.recordStudy(ms, startMs, sid);
+        /* SESSION-CAT: native ko category nahi pata — web ke RUN_KEY se
+           best-effort uthao (countdown web se hi category ke saath start hua tha).
+           studyState.cat sirf tab jab wahi session ho (id match). */
+        var webCat = (studyState && studyState.cat && (!sid || sessionId === sid))
+          ? studyState.cat : null;
+        ST.recordStudy(ms, startMs, sid, webCat || runKeyCat(sid));
       }
       refreshSafe();
       try { paintPopup(); } catch (e) { }
@@ -355,7 +474,12 @@
           startMs = (typeof st.startEpochMs === 'number' && st.startEpochMs > 0)
             ? st.startEpochMs : (Date.now() - ms);
           sid = st.sessionId ? String(st.sessionId) : sessionId;
-          if (!alreadyRecorded(ms, startMs, sid)) ST.recordStudy(ms, startMs, sid);
+          if (!alreadyRecorded(ms, startMs, sid)) {
+            /* SESSION-CAT: web state / RUN_KEY se best-effort category */
+            var nCat = (studyState && studyState.cat && (!sid || sessionId === sid))
+              ? studyState.cat : runKeyCat(sid);
+            ST.recordStudy(ms, startMs, sid, nCat);
+          }
           try { n.timerStop(); } catch (e) { }       /* alarm tone + service band */
           studyState = null; sessionId = null; clearRunning();
           refreshSafe();
@@ -371,7 +495,7 @@
           if (pend && pend.elapsedMs >= 1000) {
             var psid = pend.sessionId ? String(pend.sessionId) : null;
             if (!alreadyRecorded(pend.elapsedMs, pend.startEpochMs, psid)) {
-              ST.recordStudy(pend.elapsedMs, pend.startEpochMs, psid);
+              ST.recordStudy(pend.elapsedMs, pend.startEpochMs, psid, runKeyCat(psid));
               refreshSafe();
             }
           }
@@ -386,9 +510,17 @@
       /* 5) native chal raha hai, web state khali (page reload) → adopt */
       if (!studyState && natBusy && s2 && s2.running) {
         sessionId = (s2.sessionId ? String(s2.sessionId) : uid());
+        /* SESSION-CAT: reload se pehle web ne RUN_KEY mein category persist
+           ki thi — adopt karte waqt wapas utha lo */
+        var adoptCat = null;
+        try {
+          var rsA = window.AppStorage.loadAt(RUN_KEY);
+          if (rsA && rsA.cat) adoptCat = String(rsA.cat);
+        } catch (e) { }
         studyState = {
           mode: s2.mode === 'count' ? 'count' : 'stop',
           countdownMs: s2.countdownMs || 0,
+          cat: adoptCat,
           startEpoch: (typeof s2.startEpochMs === 'number' && s2.startEpochMs > 0)
             ? s2.startEpochMs : (Date.now() - (s2.elapsedMs || 0)),
           accMs: 0, running: true,
@@ -426,7 +558,7 @@
           if (rs.mode === 'count' && rs.countdownMs > 0 && elapsedSoFar >= rs.countdownMs) {
             /* countdown page-reload/freeze mein hi poora ho gaya tha → abhi save */
             if (!alreadyRecorded(rs.countdownMs, sStart, rs.sessionId)) {
-              ST.recordStudy(rs.countdownMs, sStart, rs.sessionId);
+              ST.recordStudy(rs.countdownMs, sStart, rs.sessionId, rs.cat || null);
             }
             clearRunning();
             refreshSafe();
@@ -437,6 +569,7 @@
             studyState = {
               mode: rs.mode === 'count' ? 'count' : 'stop',
               countdownMs: rs.countdownMs || 0,
+              cat: rs.cat || null,   /* SESSION-CAT: chuni hui category wapas */
               startEpoch: rs.mode === 'count' ? rs.startEpoch : Date.now(),
               accMs: rs.mode === 'count' ? acc : elapsedSoFar,
               running: !!rs.running,
