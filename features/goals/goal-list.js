@@ -29,6 +29,9 @@
   var KEY = 'achiva.goals.v1';
   var CATEGORIES = ['Personal', 'Professional', 'Other'];
 
+  /* STUDY-GOALS: header book button ka icon (popup study-goals.js kholta hai) */
+  var BOOK_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+
   var data = window.AppStorage.loadAt(KEY) || { goals: [] };
   if (!Array.isArray(data.goals)) data.goals = [];
 
@@ -134,10 +137,22 @@
     var ht = el('b', null, 'Goals');
     ht.style.cssText = 'font-family:var(--f-disp);font-size:20px;font-weight:700;color:var(--ink)';
     head.appendChild(ht);
+    /* STUDY-GOALS: book button '+' ke LEFT — dono ek flex group mein,
+       look bilkul same round chip (36×36) */
+    var btns = el('div');
+    btns.style.cssText = 'display:flex;align-items:center;gap:8px';
+    var ROUND = ';width:36px;height:36px;border:1px solid var(--s2);background:var(--chip-bg);border-radius:50%';
+    var book = UI.miniBtn(BOOK_ICON, 'Study goals');
+    book.style.cssText += ROUND;
+    book.addEventListener('click', function () {
+      if (window.StudyGoals) window.StudyGoals.openPopup();
+    });
+    btns.appendChild(book);
     var add = UI.miniBtn(UI.icons.plusBig, 'New goal');
-    add.style.cssText += ';width:36px;height:36px;border:1px solid var(--s2);background:var(--chip-bg);border-radius:50%';
+    add.style.cssText += ROUND;
     add.addEventListener('click', function () { openForm(null); });
-    head.appendChild(add);
+    btns.appendChild(add);
+    head.appendChild(btns);
     scroll.appendChild(head);
 
     var goals = all();

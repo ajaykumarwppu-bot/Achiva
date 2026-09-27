@@ -398,7 +398,21 @@
     p.appendChild(legend(g));
 
     if (run && run.goalId === g.id) p.appendChild(runningRow(g));
-    else { stopRun(); p.appendChild(idleRow(g)); }
+    else {
+      stopRun();
+      if (g.subjectId) {
+        /* STUDY-GOALS: linked goal — time SIRF Subject Tracker se aata
+           hai, isliye Start session / Manual timing YAHAN NAHI */
+        var auto = el('div', 'sg-auto-note');
+        auto.style.cssText = 'margin-top:12px;padding:9px 12px;border:1px dashed var(--s2);' +
+          'border-radius:12px;font-size:11px;color:var(--slate);line-height:1.6';
+        auto.textContent = 'Study Goal ON — Subject Tracker ka padhai-time apne aap is goal mein judta hai. ' +
+          'Timer aur manual entry ke buttons sirf normal (unlinked) goals mein hote hain.';
+        p.appendChild(auto);
+      } else {
+        p.appendChild(idleRow(g));
+      }
+    }
     return p;
   }
 
