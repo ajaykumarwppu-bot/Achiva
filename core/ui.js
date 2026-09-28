@@ -127,33 +127,62 @@
   }
 
   /* Edit / Delete popover : opts.confirm = true → do-click confirm */
+  /* Kebab popover (Edit / Delete + optional extra items)
+     ----------------------------------------------------------------
+     opts.confirm   : false → Delete par do-click confirm nahi (default: confirm ON)
+     opts.top/right : popover position
+     STUDY-HABIT (additive — purane saare calls par ZERO asar, defaults wahi):
+     opts.editLabel : Edit button ka text badalna ho to
+     opts.noDelete  : true → Delete item banega hi nahi (Study card compulsory
+                      hai, delete nahi ho sakta)
+     opts.extra     : [{label, icon, danger, onClick}] — Edit ke baad aur Delete
+                      se pehle insert hote hain */
   function makeKebabPop(onEdit, onDelete, opts) {
-    var confirm = !opts || opts.confirm !== false;
+    opts = opts || {};
+    var confirm = opts.confirm !== false;
     var pop = el('div', 'pop');
-    pop.style.top = (opts && opts.top) || '38px';
-    pop.style.right = (opts && opts.right) || '6px';
-    var editBtn = el('button', null, icons.edit + '<span>Edit</span>');
-    var delBtn = el('button', 'danger', icons.trash + '<span>Delete</span>');
+    pop.style.top = opts.top || '38px';
+    pop.style.right = opts.right || '6px';
+
+    var editBtn = el('button', null, icons.edit + '<span>' + esc(opts.editLabel || 'Edit') + '</span>');
     editBtn.type = 'button';
-    delBtn.type = 'button';
     var armed = false;
-    delBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      if (confirm && !armed) {
-        armed = true;
-        delBtn.querySelector('span').textContent = 'Confirm Delete';
-        return;
-      }
-      closePops();
-      onDelete();
-    });
     editBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       closePops();
       onEdit();
     });
     pop.appendChild(editBtn);
-    pop.appendChild(delBtn);
+
+    (opts.extra || []).forEach(function (it) {
+      if (!it) return;
+      var b = el('button', it.danger ? 'danger' : null,
+        (it.icon || '') + '<span>' + esc(it.label || '') + '</span>');
+      b.type = 'button';
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePops();
+        if (typeof it.onClick === 'function') it.onClick();
+      });
+      pop.appendChild(b);
+    });
+
+    if (!opts.noDelete) {
+      var delBtn = el('button', 'danger', icons.trash + '<span>Delete</span>');
+      delBtn.type = 'button';
+      delBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (confirm && !armed) {
+          armed = true;
+          delBtn.querySelector('span').textContent = 'Confirm Delete';
+          return;
+        }
+        closePops();
+        onDelete();
+      });
+      pop.appendChild(delBtn);
+    }
+
     pop.addEventListener('click', function (e) { e.stopPropagation(); });
     return pop;
   }

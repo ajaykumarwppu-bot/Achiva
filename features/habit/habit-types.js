@@ -45,6 +45,8 @@
   var PM_STEPS = [0, 0.5, 1, 1.5, 2];              /* chip options */
   var DUR_PRESETS = [30, 60, 120, 180, 240];       /* minutes */
   var DEFAULT_DUR = 30;
+  var DEFAULT_STUDY_TARGET = 60;                   /* STUDY-HABIT: daily target */
+  var STUDY_TARGET_PRESETS = [30, 60, 90, 120, 180, 240];
   var CAT = 'habit';                               /* study-timer category id */
   var PEND_KEY = 'achiva.habitTimer.pending.v1';
   var MATCH_TOLERANCE_MS = 8000;                   /* session↔habit matching */
@@ -58,7 +60,16 @@
     { id: 'timer', label: 'Timer',
       desc: 'Itni der tak kaam karo — session poora hone par hi count hoga.' }
   ];
-  var TYPE_IDS = TYPES.map(function (t) { return t.id; });
+
+  /* STUDY-HABIT: 4th type — sirf auto "Study" card ke liye.
+     JAAN-BOOJH kar TYPES array mein NAHI hai, isliye type-chooser mein
+     kabhi nahi dikhta (user ise khud nahi chun sakta). */
+  var STUDY_TYPE = {
+    id: 'study', label: 'Study', internal: true,
+    desc: 'Subject Tracker ka poora padhai-time apne aap judta hai.'
+  };
+
+  var TYPE_IDS = TYPES.map(function (t) { return t.id; }).concat([STUDY_TYPE.id]);
 
   /* ================================================================
      TIME HELPERS
@@ -94,6 +105,7 @@
   }
   function typeObj(id) {
     for (var i = 0; i < TYPES.length; i++) if (TYPES[i].id === id) return TYPES[i];
+    if (id === STUDY_TYPE.id) return STUDY_TYPE;   /* internal 4th type */
     return TYPES[0];
   }
   function labelOf(h) { return typeObj(typeOf(h)).label; }
@@ -120,6 +132,14 @@
     if (h.type === 'timer') {
       var dm = parseInt(h.durationMin, 10);
       h.durationMin = (isNaN(dm) || dm < 1) ? DEFAULT_DUR : dm;
+    }
+    if (h.type === 'study') {
+      /* STUDY-HABIT: daily target minutes. done = min(dayMinutes/target, 1),
+         isliye repsPerDay hamesha 1 rahega — GoodSystem ke 3-state design
+         (done / minimum / missed) mein ye exactly fit hota hai. */
+      var tm = parseInt(h.studyTargetMin, 10);
+      h.studyTargetMin = (isNaN(tm) || tm < 1) ? DEFAULT_STUDY_TARGET : tm;
+      h.repsPerDay = 1;
     }
     if (!h.logs || typeof h.logs !== 'object') h.logs = {};
     return h;
@@ -315,6 +335,13 @@
     var t = typeOf(h);
     var date = todayISO();
     var total = reps(h);
+
+    /* STUDY-HABIT: manual tick allowed nahi — logs study-habit.js derive karta hai */
+    if (t === 'study') {
+      return { ok: false, type: t,
+               msg: 'Study time Subject Tracker se apne aap aata hai — manual tick nahi hota.' };
+    }
+
     var L = ensureLog(h, date);
 
     if ((L.done || 0) >= total) return { ok: false, msg: 'Aaj ke saare reps ho chuke.' };
@@ -372,6 +399,17 @@
     var done = repsDone(h, date), total = reps(h);
     var st = { type: t, done: done, total: total, enabled: false,
                complete: false, running: false, hint: '', label: '' };
+
+    /* STUDY-HABIT: ye card DISPLAY-ONLY hai — time Subject Tracker se apne aap
+       aata hai, manual tick ka koi matlab nahi. Isliye enabled hamesha false;
+       good-list.js ka click handler toast dikha dega. */
+    if (t === 'study') {
+      st.displayOnly = true;
+      st.complete = done >= total;
+      st.hint = st.complete ? 'aaj ka study target poora'
+                            : 'Study time Subject Tracker se apne aap aata hai';
+      return st;
+    }
 
     if (done >= total) {
       st.complete = true; st.hint = 'aaj poora ho gaya';
@@ -563,6 +601,11 @@
       durMin: initial ? durationMin(initial) : DEFAULT_DUR
     };
     state.durCustom = DUR_PRESETS.indexOf(state.durMin) === -1;
+
+    /* STUDY-HABIT: study card ka apna editor hota hai (StudyHabit.openEditor),
+       kyunki usme type-chooser hi nahi hota. Ye editor sirf 3 user-selectable
+       types ke liye hai — defensive fallback. */
+    if (state.type === 'study') state.type = 'one';
 
     var wrap = el('div');
 
@@ -808,6 +851,9 @@
     /* constants */
     TYPES: TYPES, MAX_PM: MAX_PM, PM_STEPS: PM_STEPS,
     DUR_PRESETS: DUR_PRESETS, DEFAULT_DUR: DEFAULT_DUR, CAT: CAT,
+    /* STUDY-HABIT */
+    STUDY_TYPE: STUDY_TYPE, DEFAULT_STUDY_TARGET: DEFAULT_STUDY_TARGET,
+    STUDY_TARGET_PRESETS: STUDY_TARGET_PRESETS,
 
     /* shape / migration */
     typeOf: typeOf, typeObj: typeObj, labelOf: labelOf,

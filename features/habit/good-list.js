@@ -85,6 +85,13 @@
     return o;
   }
   function removeHabit(id) {
+    /* STUDY-HABIT: default "Study" card compulsory hai — delete block.
+       (good-detail.js ka kebab bhi noDelete ke saath banta hai, ye doosri
+       safety layer hai taaki kisi bhi raaste se delete na ho.) */
+    if (window.StudyHabit && window.StudyHabit.isStudyCard(id)) {
+      toast('Study card default hai — delete nahi ho sakta.');
+      return;
+    }
     data.habits = data.habits.filter(function (h) { return h.id !== id; });
     persist();
   }
@@ -204,6 +211,11 @@
 
   /* ---------- 2) LIST : Add Habit + habit cards ---------- */
   function renderList() {
+    /* STUDY-HABIT: render se pehle default card ensure + logs sync.
+       Study ka time studyStore se DERIVE hota hai (incremental nahi),
+       isliye har render par fresh rakhna zaroori hai. */
+    if (window.StudyHabit) { try { window.StudyHabit.sync(); } catch (e) { /* ignore */ } }
+
     listScreen.innerHTML = '';
     resetLive();          /* HABIT-TYPES: purane buttons ke repaint refs hatao */
     var scroll = el('div', 'scroll');
@@ -223,15 +235,38 @@
     head.appendChild(add);
     scroll.appendChild(head);
 
-    if (!data.habits.length) {
+    /* STUDY-HABIT: default Study card SABSE UPAR pinned, baaki habits
+       apne normal order mein neeche. */
+    function isStudy(h) { return !!(window.StudyHabit && window.StudyHabit.isStudyCard(h)); }
+    var pinned = data.habits.filter(isStudy);
+    var rest = data.habits.filter(function (h) { return !isStudy(h); });
+    var ordered = pinned.concat(rest);
+
+    if (!ordered.length) {
       var hint = el('div', null, 'Koi good habit nahi.<br>+ Add Habit se pehli habit banao.');
       hint.style.cssText = 'margin:26px 20px;padding:22px;border:1px dashed var(--s2);border-radius:18px;' +
         'color:var(--slate);font-size:12.5px;line-height:1.7;text-align:center';
       scroll.appendChild(hint);
     } else {
-      data.habits.forEach(function (h) { scroll.appendChild(habitCard(h)); });
+      ordered.forEach(function (h) { scroll.appendChild(habitCard(h)); });
+      /* Study card to hamesha rahega — isliye "koi habit nahi" wala hint
+         tabhi dikhao jab user ki apni koi habit na ho */
+      if (!rest.length) {
+        var hint2 = el('div', null, 'Ye <b>Study</b> card default hai — Subject Tracker ka poora ' +
+          'padhai-time apne aap yahan judta hai.<br>+ Add Habit se apni habits banao.');
+        hint2.style.cssText = 'margin:14px 20px 26px;padding:16px;border:1px dashed var(--s2);' +
+          'border-radius:16px;color:var(--slate);font-size:11.5px;line-height:1.65;text-align:center';
+        scroll.appendChild(hint2);
+      }
     }
     listScreen.appendChild(scroll);
+  }
+
+  /* STUDY-HABIT: study-habit.js recordStudy-wrap ke baad isi ko call karta hai
+     taaki list live update ho. renderList idempotent hai — loop ka koi khatra
+     nahi (sync recordStudy trigger nahi karta). */
+  function refreshList() {
+    try { renderList(); } catch (e) { /* ignore */ }
   }
 
   var ICON_CHEV = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
@@ -315,9 +350,11 @@
         }
       } else b.innerHTML = '';
 
-      /* reps line : fraction ho to decimal (aapki choice) */
+      /* reps line : study card par MINUTES, baaki types par reps
+         (fraction ho to decimal — aapki choice) */
       if (repsLine) {
-        repsLine.textContent = HT() ? HT().repsText(h) : ('today ' + d + '/' + total + ' reps');
+        if (t === 'study' && window.StudyHabit) repsLine.textContent = window.StudyHabit.lineText(h);
+        else repsLine.textContent = HT() ? HT().repsText(h) : ('today ' + d + '/' + total + ' reps');
       }
       return st;
     }
@@ -339,6 +376,11 @@
       }
 
       var st = HT().buttonState(h);
+      /* STUDY-HABIT: display-only — tap par sirf explanation, tick kabhi nahi */
+      if (st.type === 'study') {
+        toast(st.hint || 'Study time Subject Tracker se apne aap aata hai.');
+        return;
+      }
       if (st.complete) return;                      /* aaj poora ho chuka */
       if (!st.enabled) {                            /* strict block */
         toast(st.hint || 'Abhi ye habit tick nahi ho sakti.');
@@ -366,25 +408,52 @@
       paint();
     });
 
-    /* 'one' type khud nahi badalta — uske liye interval ki zaroorat nahi */
-    if (HT() && HT().typeOf(h) !== 'one') { liveBtns.push({ btn: b, paint: paint }); ensureLive(); }
+    /* sirf 'time' aur 'timer' ko live repaint chahiye :
+         'time'  → window khulti/band hoti rehti hai
+         'timer' → countdown chal raha hota hai
+       'one' aur 'study' khud nahi badalte (study ka time har render par
+       studyStore se sync ho jata hai), isliye interval mein register nahi. */
+    if (HT()) {
+      var liveT = HT().typeOf(h);
+      if (liveT === 'time' || liveT === 'timer') {
+        liveBtns.push({ btn: b, paint: paint });
+        ensureLive();
+      }
+    }
     return b;
   }
 
   function habitCard(h) {
     var c = el('div', 'sub-card no-chevron');
     c.style.cssText += ';padding:13px 14px;align-items:flex-start;cursor:pointer';
+    /* STUDY-HABIT: default card ki pehchaan */
+    var isStudy = !!(window.StudyHabit && window.StudyHabit.isStudyCard(h));
     var tile = el('div', 'sub-tile t1', esc((h.name || '?').charAt(0).toUpperCase()));
     c.appendChild(tile);
 
     var main = el('div', 'sub-main');
     main.style.cssText = 'flex:1;min-width:0';
+    /* naam + (Study card ho to) AUTO badge ek row mein */
+    var nameRow = el('div');
+    nameRow.style.cssText = 'display:flex;align-items:center;gap:6px;min-width:0';
     var name = el('h3', null, esc(h.name));
-    name.style.margin = '0';
-    main.appendChild(name);
+    name.style.cssText = 'margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    nameRow.appendChild(name);
+    if (isStudy) {
+      var badge = el('span', null, 'AUTO');
+      badge.style.cssText = 'flex:none;font-size:8px;font-weight:800;letter-spacing:.09em;' +
+        'padding:2px 6px;border-radius:99px;background:rgba(46,160,67,.16);color:#2ea043;' +
+        'border:1px solid rgba(46,160,67,.35)';
+      badge.title = 'Default card — Subject Tracker ka padhai-time apne aap judta hai. Delete nahi ho sakta.';
+      nameRow.appendChild(badge);
+    }
+    main.appendChild(nameRow);
+
     var done = repsOn(h, today());
     var total = h.repsPerDay || 1;
-    var repsLine = el('div', 'sub-meta', 'today ' + done + '/' + total + ' reps');
+    /* STUDY-HABIT: reps ki jagah minutes — "today 42/60 min" */
+    var repsLine = el('div', 'sub-meta',
+      isStudy ? window.StudyHabit.lineText(h) : ('today ' + done + '/' + total + ' reps'));
     repsLine.style.margin = '2px 0 0';          /* naam ke just neeche, kam gap */
     main.appendChild(repsLine);
     /* Habit Formation % bar (automaticity) */
@@ -444,6 +513,13 @@
 
   /* ---------- add habit modal ---------- */
   function openAddModal(h) {
+    /* STUDY-HABIT: default Study card ka APNA editor hai — type-chooser nahi,
+       naam/type locked, delete/disable nahi. Sirf target + start date + strict.
+       (good-detail.js ka kebab bhi yahin aata hai, isliye yahi intercept.) */
+    if (h && window.StudyHabit && window.StudyHabit.isStudyCard(h)) {
+      window.StudyHabit.openEditor(h);
+      return;
+    }
     var m = UI.modal({ zScrim: 85, zWrap: 86 });
     /* HABIT-TYPES: 'time' type mein N slots ke saath form kaafi lamba ho jata
        hai. .sheet par max-height/overflow hai hi nahi, isliye yahan explicitly
@@ -574,7 +650,9 @@
     openAddModal: openAddModal,
     /* HABIT-TYPES: timer sessions ka (fractional) credit — habit-types.js ka
        ST.recordStudy wrapper isi ko call karta hai. */
-    addCredit: addCredit, persist: persist, toast: toast
+    addCredit: addCredit, persist: persist, toast: toast,
+    /* STUDY-HABIT: study-habit.js recordStudy-wrap ke baad isi ko call karta hai */
+    refreshList: refreshList
   };
 
   /* HABIT-TYPES: ab GoodList ready hai — jo timer-session app band/reload hone

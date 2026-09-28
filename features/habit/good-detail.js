@@ -28,6 +28,9 @@
   screen.style.paddingTop = '58px';
   document.getElementById('app').appendChild(screen);
 
+  /* STUDY-HABIT: abhi kaunsi habit khuli hai — refresh() ke liye */
+  var curId = null;
+
   function boxBase() {
     var b = el('div');
     b.style.cssText = 'flex:1;padding:14px;border:1px solid var(--line);border-radius:18px;' +
@@ -38,6 +41,67 @@
     var d = el('div');
     d.style.cssText = 'width:34px;height:1px;background:var(--s2);margin:8px auto';
     return d;
+  }
+
+  /* ================================================================
+     STUDY-HABIT: total padhai-time panel
+     ----------------------------------------------------------------
+     exam-widget.js (Subject screen ka top card) jo "total study" number
+     dikhata hai — BILKUL WAHI yahan aata hai, kyunki dono
+     ST.studyStore() ke saare entries ka ms jodte hain, bina kisi filter ke.
+     Saath mein aaj ka progress (minutes / daily target).
+     ================================================================ */
+  function studyTimePanel(h) {
+    var SH = window.StudyHabit;
+    if (!SH) return el('div');
+
+    var p = el('div');
+    p.style.cssText = 'display:flex;gap:10px;margin:0 18px 12px';
+
+    /* LEFT : ab tak ka total study time */
+    var left = boxBase();
+    var tv = el('div', null, esc(SH.totalText()));
+    tv.style.cssText = 'font-family:var(--f-disp);font-size:19px;font-weight:700;' +
+      'line-height:1.15;color:var(--ink)';
+    left.appendChild(tv);
+    var tl = el('div', null, 'total study');
+    tl.style.cssText = 'font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:' +
+      'uppercase;color:var(--slate);margin-top:3px';
+    left.appendChild(tl);
+    left.appendChild(divider());
+    var sl = el('div', null, 'saare subjects + chapters ka jod');
+    sl.style.cssText = 'font-size:9px;line-height:1.4;color:var(--ash)';
+    left.appendChild(sl);
+    p.appendChild(left);
+
+    /* RIGHT : aaj ka progress vs daily target */
+    var right = boxBase();
+    var target = h.studyTargetMin || SH.DEFAULT_TARGET;
+    var mins = SH.minutesOn(h);
+    var av = el('div', null, esc(SH.fmtMin(mins)) + ' / ' + target + ' min');
+    av.style.cssText = 'font-family:var(--f-disp);font-size:19px;font-weight:700;' +
+      'line-height:1.15;color:var(--ink2)';
+    right.appendChild(av);
+    var al = el('div', null, 'aaj');
+    al.style.cssText = 'font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:' +
+      'uppercase;color:var(--slate);margin-top:3px';
+    right.appendChild(al);
+    right.appendChild(divider());
+    /* chhota progress bar */
+    var pct = SH.todayPct(h);
+    var bar = el('div');
+    bar.style.cssText = 'height:5px;border-radius:99px;background:var(--s2);overflow:hidden';
+    var fill = el('div');
+    fill.style.cssText = 'height:100%;border-radius:99px;background:' +
+      (pct >= 100 ? '#2ea043' : 'var(--ink)') + ';width:' + pct + '%;transition:width .3s';
+    bar.appendChild(fill);
+    right.appendChild(bar);
+    var pl = el('div', null, pct + '% of daily target');
+    pl.style.cssText = 'font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--ash);margin-top:4px';
+    right.appendChild(pl);
+    p.appendChild(right);
+
+    return p;
   }
 
 
@@ -372,8 +436,14 @@
   }
 
   function open(id) {
+    curId = id;                       /* STUDY-HABIT: refresh() ke liye */
     var h = G().get(id);
     if (!h) { G().openList(); return; }
+    /* STUDY-HABIT: study card ke logs har open par fresh derive karo */
+    if (window.StudyHabit && window.StudyHabit.isStudyCard(h)) {
+      try { window.StudyHabit.sync(); h = G().get(id) || h; } catch (e) { /* ignore */ }
+    }
+    var isStudy = !!(window.StudyHabit && window.StudyHabit.isStudyCard(h));
     screen.innerHTML = '';
     var scroll = el('div', 'scroll');
 
@@ -388,8 +458,11 @@
     tt.style.cssText = 'flex:1;min-width:0;font-family:var(--f-disp);font-size:16px;font-weight:700;' +
       'color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
     head.appendChild(tt);
-    /* kebab : Edit + Delete (do-click confirm) popover — direct edit NAHI */
-    var keb = UI.miniBtn(UI.icons.kebab, 'Edit or delete');
+    /* kebab : Edit + Delete (do-click confirm) popover — direct edit NAHI
+       STUDY-HABIT: default Study card par Delete item BANTA HI NAHI
+       (opts.noDelete) — wo compulsory hai. Edit label bhi alag, kyunki
+       wahan sirf target/date/strict badalta hai. */
+    var keb = UI.miniBtn(UI.icons.kebab, isStudy ? 'Edit study card' : 'Edit or delete');
     keb.style.flex = 'none';
     head.style.position = 'relative';
     var pop = UI.makeKebabPop(
@@ -397,7 +470,8 @@
       function () {                                           /* Delete (confirm ke baad) */
         window.GoodList.removeHabit(h.id);
         G().openList();
-      }
+      },
+      isStudy ? { noDelete: true, editLabel: 'Edit target / dates' } : null
     );
     keb.addEventListener('click', function (e) { e.stopPropagation(); UI.togglePop(pop); });
     head.appendChild(keb);
@@ -446,11 +520,18 @@
     row.appendChild(right);
 
     scroll.appendChild(row);
+    /* STUDY-HABIT: total study time + aaj ka progress (sirf Study card par) */
+    if (isStudy) scroll.appendChild(studyTimePanel(h));
     scroll.appendChild(streakPanel(h));
     scroll.appendChild(formationPanel(h));
     screen.appendChild(scroll);
     window.SubjectListBridge.show(screen, true);
   }
 
-  window.GoodDetail = { open: open, formationPanel: formationPanel };
+  window.GoodDetail = {
+    open: open,
+    formationPanel: formationPanel,
+    /* STUDY-HABIT: study-habit.js sync ke baad detail screen live refresh ho */
+    refresh: function () { if (curId && G() && G().get(curId)) open(curId); }
+  };
 })();

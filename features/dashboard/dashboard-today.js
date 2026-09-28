@@ -227,25 +227,67 @@
     var habits = [];
     try { habits = (window.GoodList && window.GoodList.all) ? (window.GoodList.all() || []) : []; } catch (e) { }
     if (!habits.length) { c.appendChild(emptyRow('Koi good habit nahi.')); scroll.appendChild(c); return; }
+
+    /* STUDY-HABIT: default Study card sabse upar (habits list wala hi order) */
+    function isStudy(h) { return !!(window.StudyHabit && window.StudyHabit.isStudyCard(h)); }
+    habits = habits.filter(isStudy).concat(habits.filter(function (h) { return !isStudy(h); }));
+
     habits.forEach(function (h, i) {
       if (i) c.appendChild(el('div')).style.cssText = 'height:1px;background:var(--line);margin:8px 0';
+      var HT = window.HabitTypes;
+      var study = isStudy(h);
+      var htype = HT ? HT.typeOf(h) : 'one';
       var done = (window.GoodList.repsOn(h, today()) >= (h.repsPerDay || 1));
       var row = el('div');
       row.style.cssText = 'display:flex;align-items:center;gap:8px';
       var tick = UI.roundCheck(done);
-      tick.addEventListener('click', function () {
-        if (!done) {
-          var need = (h.repsPerDay || 1) - window.GoodList.repsOn(h, today());
-          window.GoodList.addRep(h, need);
-        }
-        window.Dashboard.open();
-      });
+
+      if (study) {
+        /* STUDY-HABIT: ye card DISPLAY-ONLY hai — time Subject Tracker se apne
+           aap aata hai. Tap se complete karne ka raasta JAAN-BOOJH kar band:
+           warna bina padhe tick ho jata aur poora feature bekaar. */
+        tick.style.cursor = 'default';
+        tick.setAttribute('aria-label', 'Study time apne aap judta hai');
+        tick.addEventListener('click', function () {
+          if (window.GoodList.toast) window.GoodList.toast('Study time Subject Tracker se apne aap aata hai.');
+        });
+      } else {
+        tick.addEventListener('click', function () {
+          /* HABIT-TYPES (bug fix): 'time' aur 'timer' ke strict rules YAHAN BHI
+             laagu hone chahiye. Pehle ye handler seedha addRep(h, need) karta
+             tha jo SAARE bache reps ek jhatke mein bhar deta — isse
+               • 'time'  habit apni window ke BAHAR complete ho jaati
+               • 'timer' habit bina timer chalaye complete ho jaati
+             Ab dono HT.applyTick() se jaate hain (wahi rules jo list par hain). */
+          if (HT && (htype === 'time' || htype === 'timer')) {
+            var r = HT.applyTick(h);
+            if (!r || !r.ok) {
+              if (window.GoodList.toast) {
+                window.GoodList.toast((r && r.msg) || 'Abhi ye habit tick nahi ho sakti.');
+              }
+            } else {
+              if (window.GoodList.persist) window.GoodList.persist();
+              if (r.type === 'timer' && window.GoodList.toast) {
+                window.GoodList.toast('Timer start · ' + HT.durLabel(HT.durationMin(h)));
+              }
+            }
+          } else if (!done) {
+            /* 'one' type : purana behaviour — baaki reps ek saath fill */
+            var need = (h.repsPerDay || 1) - window.GoodList.repsOn(h, today());
+            window.GoodList.addRep(h, need);
+          }
+          window.Dashboard.open();
+        });
+      }
       row.appendChild(tick);
       var main = el('div');
       main.style.cssText = 'flex:1;min-width:0';
       var nm = el('div', null, esc(h.name));
       nm.style.cssText = 'font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (done ? 'text-decoration:line-through;opacity:.6' : '');
-      var meta = el('div', null, 'Aaj repeat karein · ' + window.GoodList.repsOn(h, today()) + '/' + (h.repsPerDay || 1));
+      /* STUDY-HABIT: study card par reps ki jagah minutes */
+      var meta = el('div', null, study
+        ? ('Aaj padhai · ' + String(window.StudyHabit.lineText(h)).replace('today ', ''))
+        : ('Aaj repeat karein · ' + window.GoodList.repsOn(h, today()) + '/' + (h.repsPerDay || 1)));
       meta.style.cssText = 'font-size:10.5px;color:var(--ash);margin-top:2px';
       main.appendChild(nm); main.appendChild(meta);
       row.appendChild(main);
