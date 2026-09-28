@@ -32,9 +32,44 @@
   var data = window.AppStorage.loadAt(KEY) || { habits: [] };
   if (!Array.isArray(data.habits)) data.habits = [];
 
+  /* HABIT-TYPES: purane habits (jinme `type` field hi nahi) ko normalize karo.
+     Koi migration nahi — sirf safe defaults, isliye unka behaviour 100% wahi
+     rahega jo pehle tha (type 'one' = tap karo, rep +1). */
+  function HT() { return window.HabitTypes || null; }
+  if (HT()) data.habits.forEach(function (h) { HT().normalize(h); });
+
   function persist() { window.AppStorage.saveAt(KEY, data); }
   function bridge() { return window.SubjectListBridge; }
   function today() { return UI.todayISO(); }
+
+  /* ---------- chhota transient message (app ki existing .toast CSS) ----------
+     App mein toast ki CSS thi lekin koi JS nahi — isliye yahan minimal helper.
+     Strict-block / timer-start / validation messages ke liye use hota hai. */
+  var toastEl = null, toastTimer = null;
+  function toast(msg) {
+    var app = document.getElementById('app');
+    if (!app) return;
+    if (!toastEl || !toastEl.parentNode) {
+      toastEl = el('div', 'toast');
+      /* .toast mein white-space:nowrap hai — lambe message ke liye override */
+      toastEl.style.whiteSpace = 'normal';
+      toastEl.style.maxWidth = '80%';
+      toastEl.style.textAlign = 'center';
+      toastEl.style.lineHeight = '1.35';
+      app.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.style.opacity = '1';
+    toastEl.style.transform = 'translate(-50%, 0)';
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(function () {
+      toastTimer = null;
+      if (toastEl) {
+        toastEl.style.opacity = '0';
+        toastEl.style.transform = 'translate(-50%, -18px)';
+      }
+    }, 2100);
+  }
 
   /* ---------- store ---------- */
   function all() { return data.habits; }
@@ -44,6 +79,7 @@
     o.repsPerDay = Math.max(1, o.repsPerDay || 1);
     o.startDate = o.startDate || today();
     o.logs = o.logs || {};
+    if (HT()) HT().normalize(o);      /* type defaults + shape safe karo */
     data.habits.push(o);
     persist();
     return o;
@@ -64,6 +100,40 @@
     if (delta > 0) h.logs[d].times.push(Date.now());
     persist();
     return h.logs[d].done;
+  }
+
+  /* HABIT-TYPES: timer-type habits ka credit. Fractional ho sakta hai
+     (proportional — 30 min mein se 20 min = 0.67). Session record bhi save
+     hota hai taaki dobara credit na ho (dedupe) aur history rahe.
+     habit-types.js ka ST.recordStudy wrapper isi ko call karta hai — wo
+     SINGLE funnel hai jisse saare save paths (native finish, manual stop,
+     reconcile, reload-recovery) guzarte hain. */
+  function addCredit(habitId, credit, meta) {
+    var h = get(habitId);
+    if (!h) return null;
+    meta = meta || {};
+    var cr = Math.max(0, Math.min(1, Number(credit) || 0));
+    if (!(cr > 0)) return null;
+    var d = meta.date || today();
+    if (!h.logs) h.logs = {};
+    if (!h.logs[d]) h.logs[d] = { done: 0, times: [] };
+    var L = h.logs[d];
+    if (!Array.isArray(L.times)) L.times = [];
+    if (!Array.isArray(L.sessions)) L.sessions = [];
+    L.sessions.push({
+      ms: Math.max(0, Math.floor(Number(meta.ms) || 0)),
+      startMs: Math.floor(Number(meta.startMs) || 0) || null,
+      sid: meta.sid || null,
+      credit: cr,
+      at: Date.now()
+    });
+    /* done = saare sessions ka total, repsPerDay par cap */
+    L.done = HT() ? HT().recomputeTimerDone(h, d)
+                  : Math.min(h.repsPerDay || 1, (L.done || 0) + cr);
+    L.times.push(Date.now());
+    persist();
+    try { renderList(); } catch (e) { /* list screen mount nahi hai to ignore */ }
+    return L.done;
   }
   function dayDone(h, date) { return repsOn(h, date) >= (h.repsPerDay || 1); }
   function bestStreak(h) {
@@ -135,6 +205,7 @@
   /* ---------- 2) LIST : Add Habit + habit cards ---------- */
   function renderList() {
     listScreen.innerHTML = '';
+    resetLive();          /* HABIT-TYPES: purane buttons ke repaint refs hatao */
     var scroll = el('div', 'scroll');
 
     var head = el('div');
@@ -164,35 +235,139 @@
   }
 
   var ICON_CHEV = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+  /* HABIT-TYPES: timer-type ke button par play glyph */
+  var ICON_PLAY = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.2v13.6L19 12z"/></svg>';
 
-  /* round progress button : fraction-fill green, complete par tick */
+  /* ---------- live repaint ----------
+     'time' type ki window khud khulti/band hoti rehti hai aur 'timer' type ka
+     countdown chalta rehta hai — dono ke liye button state time ke saath badalti
+     hai. Isliye ek halka interval sirf unhi buttons ko repaint karta hai
+     ('one' type kabhi khud nahi badalta, isliye skip).
+
+     LEAK-FIX: interval tabhi chalta hai jab tak koi button DOM se juda hua hai.
+     List re-render ya screen change par buttons detach hote hain → entry hat
+     jati hai → list khaali hote hi interval BAND. Warna user ke habit list se
+     bahar jaane ke baad bhi har second bekaar kaam hota rehta (aur detached
+     nodes memory mein atke rehte). */
+  var liveBtns = [];
+  var liveTimer = null;
+
+  function attached(n) {
+    try {
+      if (typeof n.isConnected === 'boolean') return n.isConnected;
+      return !!(window.document.documentElement && window.document.documentElement.contains(n));
+    } catch (e) { return false; }
+  }
+  function stopLive() {
+    if (liveTimer) { window.clearInterval(liveTimer); liveTimer = null; }
+  }
+  function ensureLive() {
+    if (liveTimer) return;
+    liveTimer = window.setInterval(function () {
+      for (var i = liveBtns.length - 1; i >= 0; i--) {
+        var rec = liveBtns[i];
+        if (!rec || !rec.btn || !attached(rec.btn)) { liveBtns.splice(i, 1); continue; }
+        try { rec.paint(); } catch (e) { /* ignore */ }
+      }
+      if (!liveBtns.length) stopLive();
+    }, 1000);
+  }
+  function resetLive() { liveBtns = []; }
+
+  /* round progress button : fraction-fill green, complete par tick.
+     HABIT-TYPES: ab "smart" hai — behaviour habit ke type par depend karta hai.
+       one   → tap = instant +1 rep
+       time  → tap = active slot tick; window ke bahar DISABLED (strict)
+       timer → tap = seedha timer start (koi popup nahi); credit session
+               complete hone par recordStudy-wrapper se aata hai */
   function progressBtn(h, done, total, repsLine) {
     var b = el('button');
     b.type = 'button';
     b.setAttribute('aria-label', 'Add rep');
     b.style.cssText = 'width:34px;height:34px;border-radius:50%;cursor:pointer;flex:none;' +
       'display:flex;align-items:center;justify-content:center;border:1px solid var(--s2);' +
-      'transition:transform .16s ease, background .2s ease;';
-    function paint(d) {
-      var pct = Math.round((d / total) * 100);
+      'transition:transform .16s ease, background .2s ease, opacity .2s ease;';
+
+    function paint() {
+      var d = repsOn(h, today());
+      var t = HT() ? HT().typeOf(h) : 'one';
+      var pct = total > 0 ? Math.max(0, Math.min(100, Math.round((d / total) * 100))) : 0;
       var comp = d >= total;
+      var st = HT() ? HT().buttonState(h) : { enabled: !comp, complete: comp, type: 'one', hint: '' };
+
       b.style.background = comp ? '#2ea043'
         : 'conic-gradient(#2ea043 ' + pct + '%, var(--chip-bg) ' + pct + '% 100%)';
       b.style.borderColor = comp ? '#2ea043' : 'var(--s2)';
       b.style.color = comp ? '#fff' : 'var(--slate)';
-      b.innerHTML = comp ? UI.icons.check : '';
+      var usable = comp || st.enabled;
+      b.style.opacity = usable ? '1' : '.4';
+      b.style.cursor = usable ? 'pointer' : 'not-allowed';
+      b.title = st.hint || '';
+      b.setAttribute('aria-label', st.hint || 'Add rep');
+
+      /* icon : complete → tick, timer → play (remaining ke saath), warna khaali */
+      if (comp) b.innerHTML = UI.icons.check;
+      else if (t === 'timer') {
+        b.innerHTML = ICON_PLAY;
+        if (st.running && typeof st.remainingMs === 'number' && st.remainingMs > 0) {
+          var mins = Math.ceil(st.remainingMs / 60000);
+          b.title = (st.hint || '') + ' · ' + mins + ' min bache';
+        }
+      } else b.innerHTML = '';
+
+      /* reps line : fraction ho to decimal (aapki choice) */
+      if (repsLine) {
+        repsLine.textContent = HT() ? HT().repsText(h) : ('today ' + d + '/' + total + ' reps');
+      }
+      return st;
     }
-    paint(done);
+
+    paint();
+
     b.addEventListener('click', function (e) {
       e.stopPropagation();
-      var cur = repsOn(h, today());
-      if (cur >= total) return;                 /* cap : repetition se zyada nahi */
-      var nd = addRep(h, 1);
+
+      /* fallback : HabitTypes na load ho to purana behaviour */
+      if (!HT()) {
+        var cur0 = repsOn(h, today());
+        if (cur0 >= total) return;
+        var nd0 = addRep(h, 1);
+        b.style.transform = 'scale(1.18)';
+        window.setTimeout(function () { b.style.transform = 'scale(1)'; }, 160);
+        if (repsLine) repsLine.textContent = 'today ' + nd0 + '/' + total + ' reps';
+        return;
+      }
+
+      var st = HT().buttonState(h);
+      if (st.complete) return;                      /* aaj poora ho chuka */
+      if (!st.enabled) {                            /* strict block */
+        toast(st.hint || 'Abhi ye habit tick nahi ho sakti.');
+        return;
+      }
+
+      var r = HT().applyTick(h);
+      if (!r || !r.ok) {
+        toast((r && r.msg) || 'Abhi ye habit tick nahi ho sakti.');
+        paint();
+        return;
+      }
+
+      if (r.type === 'timer') {
+        /* timer START hua — credit session complete hone par aayega */
+        toast('Timer start · ' + HT().durLabel(HT().durationMin(h)) +
+              ' · poora hone par rep milega');
+        paint();
+        return;
+      }
+
+      persist();
       b.style.transform = 'scale(1.18)';
       window.setTimeout(function () { b.style.transform = 'scale(1)'; }, 160);
-      paint(nd);
-      if (repsLine) repsLine.textContent = 'today ' + nd + '/' + total + ' reps';
+      paint();
     });
+
+    /* 'one' type khud nahi badalta — uske liye interval ki zaroorat nahi */
+    if (HT() && HT().typeOf(h) !== 'one') { liveBtns.push({ btn: b, paint: paint }); ensureLive(); }
     return b;
   }
 
@@ -251,9 +426,37 @@
     bridge().show(listScreen, true);
   }
 
+  /* HABIT-TYPES: collected type-values ko habit object par lagao.
+     NOTE: type badalne par purana type-data (slots / durationMin) DELETE nahi
+     hota — sirf ignore hota hai. Isliye user wapas usi type par jaaye to uska
+     purana setup mila rahega. */
+  function applyType(h, v) {
+    if (!v) return;
+    h.type = v.type || 'one';
+    h.repsPerDay = Math.max(1, parseInt(v.repsPerDay, 10) || 1);
+    if (h.type === 'time' && Array.isArray(v.slots)) h.slots = v.slots;
+    if (h.type === 'timer') {
+      h.durationMin = Math.max(1, parseInt(v.durationMin, 10) ||
+        (HT() ? HT().DEFAULT_DUR : 30));
+    }
+    if (HT()) HT().normalize(h);
+  }
+
   /* ---------- add habit modal ---------- */
   function openAddModal(h) {
     var m = UI.modal({ zScrim: 85, zWrap: 86 });
+    /* HABIT-TYPES: 'time' type mein N slots ke saath form kaafi lamba ho jata
+       hai. .sheet par max-height/overflow hai hi nahi, isliye yahan explicitly
+       scrollable banate hain — warna content screen se bahar chala jata. */
+    m.sheet.style.maxHeight = 'calc(100% - 26px)';
+    m.sheet.style.boxSizing = 'border-box';
+    m.sheet.style.display = 'flex';
+    m.sheet.style.flexDirection = 'column';
+    m.body.style.overflowY = 'auto';
+    m.body.style.flex = '1 1 auto';
+    m.body.style.minHeight = '0';
+    m.body.style.overscrollBehavior = 'contain';
+
     var nameF = UI.inputField('Habit name', 'e.g. Drink water');
     var descWrap = el('div');
     descWrap.style.marginBottom = '12px';
@@ -263,14 +466,18 @@
     descIn.style.cssText = 'width:100%;min-height:64px;resize:vertical;border:1px solid var(--s2);border-radius:12px;' +
       'background:var(--input-bg);padding:10px 12px;font:inherit;font-size:13px;color:var(--ink);box-sizing:border-box';
     descWrap.appendChild(descIn);
-    var repsF = UI.inputField('Repetition per day', 'e.g. 1, 2, 10', 'number');
+    /* HABIT-TYPES: 'Repetition per day' field ki jagah 'Habit type' chooser.
+       Repetition ab type-specific section ke andar hai (teeno types mein hota
+       hai). HabitTypes load na ho to purana field fallback mein chalta hai. */
+    var typeEd = HT() ? HT().buildTypeEditor(h) : null;
+    var repsF = typeEd ? null : UI.inputField('Repetition per day', 'e.g. 1, 2, 10', 'number');
     var startISO = today();
     if (h) {
       nameF.input.value = h.name || '';
       descIn.value = h.desc || '';
-      repsF.input.value = h.repsPerDay || 1;
+      if (repsF) repsF.input.value = h.repsPerDay || 1;
       startISO = h.startDate || today();
-    } else repsF.input.value = 1;
+    } else if (repsF) repsF.input.value = 1;
     var startB = UI.pillBtn('Start: ' + UI.fmtDate(startISO));
     startB.style.cssText += ';width:100%;justify-content:flex-start;margin-bottom:10px';
     startB.addEventListener('click', function () {
@@ -284,7 +491,7 @@
     m.open(h ? 'Edit habit' : 'New good habit', function (body) {
       body.appendChild(nameF.wrap);
       body.appendChild(descWrap);
-      body.appendChild(repsF.wrap);
+      body.appendChild(typeEd ? typeEd.wrap : repsF.wrap);
       body.appendChild(startB);
       body.appendChild(UI.label('Strict level (1 = strictest, 5 = lenient)'));
       body.appendChild(strictR.row);
@@ -292,21 +499,36 @@
     }, function () {
       var name = nameF.input.value.trim();
       if (!name) { nameF.input.focus(); return; }
+
+      /* HABIT-TYPES: type-specific validation — e.g. 'time' type mein exactly
+         N slots zaroori hain (aapki choice). Fail hone par editor apna inline
+         error dikha chuka hota hai; modal khula rehta hai taaki user theek
+         kar sake, chup-chaap galat data save na ho. */
+      var tv = null;
+      if (typeEd) {
+        tv = typeEd.collect();
+        if (!tv || !tv.ok) return;
+      }
+      var fallbackReps = repsF ? Math.max(1, parseInt(repsF.input.value, 10) || 1) : 1;
+
       if (h) {
         h.name = name;
         h.desc = descIn.value.trim();
-        h.repsPerDay = Math.max(1, parseInt(repsF.input.value, 10) || 1);
         h.startDate = startISO;
         h.strict = parseInt(strictR.get(), 10) || 3;
+        if (typeEd) applyType(h, tv.value);
+        else h.repsPerDay = fallbackReps;
         persist();
       } else {
-        addHabit({
+        var o = {
           name: name,
           desc: descIn.value.trim(),
-          repsPerDay: Math.max(1, parseInt(repsF.input.value, 10) || 1),
           startDate: startISO,
           strict: parseInt(strictR.get(), 10) || 3
-        });
+        };
+        if (typeEd) applyType(o, tv.value);
+        else o.repsPerDay = fallbackReps;
+        addHabit(o);
       }
       m.close();
       if (h && window.GoodDetail) window.GoodDetail.open(h.id);
@@ -349,6 +571,17 @@
     open: open, openList: openList, openDetail: openDetail,
     all: all, get: get, addHabit: addHabit, removeHabit: removeHabit, addRep: addRep,
     repsOn: repsOn, dayDone: dayDone, goodStreak: goodStreak, bestStreak: bestStreak,
-    openAddModal: openAddModal
+    openAddModal: openAddModal,
+    /* HABIT-TYPES: timer sessions ka (fractional) credit — habit-types.js ka
+       ST.recordStudy wrapper isi ko call karta hai. */
+    addCredit: addCredit, persist: persist, toast: toast
   };
+
+  /* HABIT-TYPES: ab GoodList ready hai — jo timer-session app band/reload hone
+     ki wajah se atka tha uska hisaab lagao. Ye zaroori hai kyunki study-timer.js
+     apna reconcile() index.html mein HAMARE wrapper se pehle chala chuka hota
+     hai (load order), to us waqt habit ko credit nahi mil pata. */
+  if (HT() && HT().reconcilePending) {
+    try { HT().reconcilePending(); } catch (e) { /* ignore */ }
+  }
 })();

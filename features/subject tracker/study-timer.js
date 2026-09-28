@@ -689,4 +689,8 @@
   window.ST.paintTimerPopup = paintPopup;
   window.ST.studyStart = studyStart;
   window.ST.studyStop = studyStop;
+  /* HABIT-TYPES: timer ki live state bahar se padhne ke liye (additive —
+     study-timer ka apna behaviour bilkul nahi badla). habit-types.js isi se
+     pata karta hai ki timer busy hai ya nahi, aur button par remaining time. */
+  window.ST.timerState = studyStatus;
 })();

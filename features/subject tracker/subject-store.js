@@ -61,6 +61,10 @@
     { id: 'practice', label: 'Practice', full: 'Practice — test / questions solve' },
     { id: 'revision', label: 'Revision', full: 'Revision — padha hua dohrana' },
     { id: 'notes', label: 'Notes', full: 'Notes — notes banana' },
+    /* HABIT-TYPES: habit-timer sessions isi category mein save hote hain.
+       study-timer ko 'habit' cat pass karne se category popup SKIP ho jata
+       hai (habit already ek specific kaam hai, alag se poochhna bekaar). */
+    { id: 'habit', label: 'Habit', full: 'Habit — habit timer session' },
     { id: 'other', label: 'Other', full: 'Other' }
   ];
   function catById(id) {
