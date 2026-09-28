@@ -280,9 +280,6 @@
       });
     });
     var strictR = UI.chipRow(['1', '2', '3', '4', '5'], String(h ? (h.strict || 3) : 3));
-    var minF = UI.inputField('Minimum version (bad day par chhota version)', 'e.g. 4 pushups / 1 page');
-    var tgtF = UI.inputField('Target time / number (optional)', 'e.g. 11pm / 8 glass');
-    if (h) { minF.input.value = h.minimum || ''; tgtF.input.value = h.target || ''; }
 
     m.open(h ? 'Edit habit' : 'New good habit', function (body) {
       body.appendChild(nameF.wrap);
@@ -292,8 +289,6 @@
       body.appendChild(UI.label('Strict level (1 = strictest, 5 = lenient)'));
       body.appendChild(strictR.row);
       strictR.row.style.margin = '6px 0 12px';
-      body.appendChild(minF.wrap);
-      body.appendChild(tgtF.wrap);
     }, function () {
       var name = nameF.input.value.trim();
       if (!name) { nameF.input.focus(); return; }
@@ -303,8 +298,6 @@
         h.repsPerDay = Math.max(1, parseInt(repsF.input.value, 10) || 1);
         h.startDate = startISO;
         h.strict = parseInt(strictR.get(), 10) || 3;
-        h.minimum = minF.input.value.trim();
-        h.target = tgtF.input.value.trim();
         persist();
       } else {
         addHabit({
@@ -312,9 +305,7 @@
           desc: descIn.value.trim(),
           repsPerDay: Math.max(1, parseInt(repsF.input.value, 10) || 1),
           startDate: startISO,
-          strict: parseInt(strictR.get(), 10) || 3,
-          minimum: minF.input.value.trim(),
-          target: tgtF.input.value.trim()
+          strict: parseInt(strictR.get(), 10) || 3
         });
       }
       m.close();
