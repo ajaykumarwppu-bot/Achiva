@@ -24,7 +24,7 @@
   document.getElementById('app').appendChild(screen);
 
   function bridge() { return window.SubjectListBridge; }
-  function today() { return UI.todayISO(); }
+  function today() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }   /* DAY-CLOCK */
 
   /* ---------- goal tasks : tagged canvas cards ---------- */
   function goalTasks() {

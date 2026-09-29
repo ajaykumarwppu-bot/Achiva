@@ -223,6 +223,7 @@
     scroll.appendChild(bannerEl);
 
     scroll.appendChild(wrapSection(buildTheme()));
+    scroll.appendChild(wrapSection(buildDayClock()));
     scroll.appendChild(wrapSection(buildBackup()));
     scroll.appendChild(wrapSection(buildAccount()));
 
@@ -274,6 +275,88 @@
       });
       stTheme.appendChild(b);
     });
+  }
+
+  /* ---------- Mera Din (DayClock) ----------
+     USER ka apna din : "mera din kab shuru hota hai". Default raat 12:00
+     (= purana behaviour). Koi bhi dusra time set karne par app ka din us
+     waqt palatta hai — raat 12 baje nahi. Isse raat 12 ke baad ka kaam
+     pichhle din mein gina jaata hai (jo user raat 2 baje tak padhta hai
+     uske liye zaroori). Purana data untouched rehta hai (DayClock.enabledAt). */
+  function buildDayClock() {
+    var box = section('Mera Din');
+    var DC = window.DayClock;
+
+    var info = document.createElement('div');
+    info.style.cssText = 'font-size:11.5px;line-height:1.6;color:var(--slate);margin-bottom:10px';
+    info.innerHTML = 'Aapka din kab shuru hota hai? App <b style="color:var(--ink)">usi waqt</b> nayi ' +
+      'tareekh par jaata hai (raat 12 baje nahi). Isse raat 12 ke baad ka kaam ' +
+      '<b style="color:var(--ink)">pichhle din</b> mein gina jaata hai. ' +
+      'Purana hisaab-kitaab bilkul nahi badalta.';
+    box.appendChild(info);
+
+    var preview = document.createElement('div');
+    preview.style.cssText = 'font-size:11px;line-height:1.6;padding:8px 10px;border-radius:10px;' +
+      'border:1px dashed var(--s2);color:var(--slate);margin-bottom:10px';
+    box.appendChild(preview);
+
+    function paintPreview() {
+      if (!DC) { preview.textContent = 'DayClock load nahi hua.'; return; }
+      var d = DC.describe();
+      preview.innerHTML = 'Abhi asli ghadi : <b style="color:var(--ink)">' + d.nowLabel +
+        ' · ' + d.realToday + '</b><br>Aapka aaj ka din : <b style="color:var(--ink)">' + d.appToday + '</b>' +
+        (d.isCustom ? '' : '  (default — asli tareekh ke barabar)');
+    }
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px';
+    var PRESETS = ['00:00', '04:00', '06:00', '08:00', '10:00'];
+    var cur = DC ? DC.settings().dayStart : '00:00';
+    var btns = [];
+    function paintChips() {
+      PRESETS.forEach(function (p, i) {
+        var on = (p === cur);
+        btns[i].style.cssText = 'padding:8px 14px;border-radius:99px;cursor:pointer;font:inherit;' +
+          'font-size:12px;font-weight:700;transition:.15s;' +
+          (on ? 'background:var(--ink);color:var(--paper);border:1px solid var(--ink)'
+              : 'background:var(--chip-bg);color:var(--slate);border:1px solid var(--s2)');
+      });
+    }
+    PRESETS.forEach(function (p, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = (p === '00:00' ? '12 AM' : p) + (p === '00:00' ? ' (default)' : '');
+      b.addEventListener('click', function () {
+        cur = p;
+        if (DC) DC.setDayStart(p);
+        paintChips(); paintPreview();
+      });
+      btns.push(b); row.appendChild(b);
+    });
+    box.appendChild(row);
+    paintChips();
+
+    var crow = document.createElement('div');
+    crow.style.cssText = 'display:flex;gap:8px;align-items:center';
+    var lab = document.createElement('span');
+    lab.style.cssText = 'font-size:11px;color:var(--slate)';
+    lab.textContent = 'Custom :';
+    var tin = document.createElement('input');
+    tin.type = 'time';
+    tin.style.cssText = 'flex:1;padding:10px 12px;border-radius:12px;border:1px solid var(--s2);' +
+      'background:var(--input-bg);font:inherit;font-size:13px;color:var(--ink);outline:none';
+    tin.value = cur;
+    tin.addEventListener('change', function () {
+      if (!tin.value) return;
+      cur = tin.value;
+      if (DC) DC.setDayStart(tin.value);
+      paintChips(); paintPreview();
+    });
+    crow.appendChild(lab); crow.appendChild(tin);
+    box.appendChild(crow);
+
+    paintPreview();
+    return box;
   }
 
   /* ---------- Backup ---------- */

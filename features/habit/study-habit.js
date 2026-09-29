@@ -55,9 +55,15 @@
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   /* local din ka ISO — study-goals.js wala hi tareeka, taaki grouping
      goals aur habits mein consistent rahe */
+  /* DAY-CLOCK : session ka din app ke apne din se (raat 12 ke baad ka kaam
+     pichhle din mein). Purana data DayClock ke enabledAt cutoff se untouched. */
   function localISO(ms) {
+    if (window.DayClock && window.DayClock.dayOf) return window.DayClock.dayOf(ms);
     var d = new Date(ms);
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function appToday() {
+    return window.DayClock ? window.DayClock.today() : UI.todayISO();
   }
 
   /* ---------- study store read ---------- */
@@ -120,7 +126,7 @@
         type: 'study',
         repsPerDay: 1,
         studyTargetMin: DEFAULT_TARGET,
-        startDate: UI.todayISO(),
+        startDate: appToday(),
         strict: 3,
         studyLinked: Date.now(),
         system: true,          /* delete-protection + AUTO badge ka flag */
@@ -144,8 +150,8 @@
 
     var map = minutesByDate();
     var target = h.studyTargetMin || DEFAULT_TARGET;
-    var start = h.startDate || UI.todayISO();
-    var today = UI.todayISO();
+    var start = h.startDate || appToday();
+    var today = appToday();
 
     if (!h.logs || typeof h.logs !== 'object') h.logs = {};
 
@@ -177,7 +183,7 @@
   function minutesOn(h, date) {
     h = h || getCard();
     if (!h) return 0;
-    var L = (h.logs || {})[date || UI.todayISO()];
+    var L = (h.logs || {})[date || appToday()];
     return L ? (L.minutes || 0) : 0;
   }
   function fmtMin(m) {
@@ -222,7 +228,7 @@
     m.body.style.flex = '1 1 auto';
     m.body.style.minHeight = '0';
 
-    var startISO = h.startDate || UI.todayISO();
+    var startISO = h.startDate || appToday();
     var targetMin = h.studyTargetMin || DEFAULT_TARGET;
     var targetCustom = TARGET_PRESETS.indexOf(targetMin) === -1;
 

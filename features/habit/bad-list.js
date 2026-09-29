@@ -47,7 +47,7 @@
 
   function persist() { window.AppStorage.saveAt(KEY, data); }
   function bridge() { return window.SubjectListBridge; }
-  function today() { return UI.todayISO(); }
+  function today() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }   /* DAY-CLOCK */
 
   /* ---------- store ---------- */
   function all() { return data.habits; }

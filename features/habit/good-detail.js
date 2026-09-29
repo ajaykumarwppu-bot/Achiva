@@ -23,6 +23,9 @@
 
   var el = UI.el, esc = UI.esc;
   var G = function () { return window.GoodList; };
+  /* DAY-CLOCK : 'aaj' app ke apne din se (setting 'Mera Din') */
+  function appToday() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
+
 
   var screen = el('section', 'screen');
   screen.style.paddingTop = '58px';
@@ -140,7 +143,7 @@
     var p = UI.panel();
     p.style.cssText += ';margin:0 18px 12px';
     p.appendChild(UI.panelTitle('Streak box'));
-    var today = UI.todayISO();
+    var today = appToday();
     var startMK = monthKey(h.startDate);
     var todayMK = monthKey(today);
     var fromMK = startMK > addMonths(todayMK, -2) ? startMK : addMonths(todayMK, -2);
@@ -190,7 +193,7 @@
     var GS = window.GoodSystem;
     var cs = GS.compute(h.logs || {}, {
       startDate: h.startDate, strict: h.strict || 3, repsPerDay: h.repsPerDay || 1
-    }, UI.todayISO());
+    }, appToday());
 
     /* ek BOX (streak-box jaisa) */
     var p = el('div');
@@ -316,7 +319,7 @@
   var rulesScreen = null;
   function openRules(h, cs) {
     var GS = window.GoodSystem;
-    if (!cs) cs = GS.compute(h.logs || {}, { startDate: h.startDate, strict: h.strict || 3, repsPerDay: h.repsPerDay || 1 }, UI.todayISO());
+    if (!cs) cs = GS.compute(h.logs || {}, { startDate: h.startDate, strict: h.strict || 3, repsPerDay: h.repsPerDay || 1 }, appToday());
     if (!rulesScreen) {
       rulesScreen = el('section', 'screen');
       rulesScreen.style.paddingTop = '58px';
@@ -510,7 +513,7 @@
     stV.style.cssText = 'font-size:13px;font-weight:700;color:var(--ink);margin-top:3px';
     right.appendChild(stV);
     right.appendChild(divider());
-    var days = Math.max(0, Math.round((new Date(UI.todayISO()) - new Date(h.startDate)) / 86400000));
+    var days = Math.max(0, Math.round((new Date(appToday()) - new Date(h.startDate)) / 86400000));
     var dN = el('div', null, String(days));
     dN.style.cssText = 'font-family:var(--f-disp);font-size:22px;font-weight:700;color:var(--ink2)';
     right.appendChild(dN);

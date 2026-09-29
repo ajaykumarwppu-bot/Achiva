@@ -40,7 +40,7 @@
 
   function persist() { window.AppStorage.saveAt(KEY, data); }
   function bridge() { return window.SubjectListBridge; }
-  function today() { return UI.todayISO(); }
+  function today() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }   /* DAY-CLOCK */
 
   /* ---------- chhota transient message (app ki existing .toast CSS) ----------
      App mein toast ki CSS thi lekin koi JS nahi — isliye yahan minimal helper.

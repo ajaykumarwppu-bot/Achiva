@@ -39,6 +39,9 @@
   window.__achivaBadDetailLoaded = true;
 
   var el = UI.el, esc = UI.esc;
+  /* DAY-CLOCK : 'aaj' app ke apne din se (setting 'Mera Din') */
+  function appToday() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
+
   var B = function () { return window.BadList; };
 
   var screen = el('section', 'screen');
@@ -106,15 +109,15 @@
     return B().defendedOn(h, iso) && B().repsOn(h, iso).length === 0;
   }
   function curStreak(h) {
-    var d = UI.todayISO();
+    var d = appToday();
     if (!defendedClean(h, d)) d = UI.addDays(d, -1);
     var n = 0;
     while (defendedClean(h, d) && n < 5000) { n++; d = UI.addDays(d, -1); }
     return n;
   }
   function bestStreak(h) {
-    var d = h.since || UI.todayISO();
-    var t = UI.todayISO();
+    var d = h.since || appToday();
+    var t = appToday();
     var best = 0, cur = 0, guard = 0;
     while (d <= t && guard < 5000) {
       if (defendedClean(h, d)) { cur++; if (cur > best) best = cur; }
@@ -130,7 +133,7 @@
     var p = UI.panel();
     p.style.cssText += ';margin:0 18px 12px';
     p.appendChild(UI.panelTitle('Streak map'));
-    var today = UI.todayISO();
+    var today = appToday();
     var since = h.since || today;
     var startMK = monthKey(since);
     var todayMK = monthKey(today);
@@ -299,11 +302,11 @@
     var stL = el('div', null, 'Fighting since');
     stL.style.cssText = 'font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--slate)';
     right.appendChild(stL);
-    var stV = el('div', null, UI.fmtDate(h.since || UI.todayISO()));
+    var stV = el('div', null, UI.fmtDate(h.since || appToday()));
     stV.style.cssText = 'font-size:13px;font-weight:700;color:var(--ink);margin-top:3px';
     right.appendChild(stV);
     right.appendChild(divider());
-    var days = Math.max(0, Math.round((new Date(UI.todayISO()) - new Date(h.since || UI.todayISO())) / 86400000));
+    var days = Math.max(0, Math.round((new Date(appToday()) - new Date(h.since || appToday())) / 86400000));
     var dN = el('div', null, String(days));
     dN.style.cssText = 'font-family:var(--f-disp);font-size:22px;font-weight:700;color:var(--ink2)';
     right.appendChild(dN);
@@ -322,8 +325,8 @@
       var asGood = {
         id: h.id,
         name: h.name,
-        logs: window.BadSystem.logsFrom(h, UI.todayISO()),
-        startDate: h.since || UI.todayISO(),
+        logs: window.BadSystem.logsFrom(h, appToday()),
+        startDate: h.since || appToday(),
         strict: 3,
         repsPerDay: 1
       };

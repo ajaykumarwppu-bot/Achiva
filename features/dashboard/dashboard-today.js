@@ -34,7 +34,7 @@
   window.__achivaDashboardTodayLoaded = true;
 
   var el = UI.el, esc = UI.esc;
-  function today() { return UI.todayISO(); }
+  function today() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }   /* DAY-CLOCK */
   function ST() { return window.ST; }
 
   function sectionTitle(txt) {

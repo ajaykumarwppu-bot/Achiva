@@ -146,6 +146,9 @@
       'use strict';
       /* ORIGINAL load order — wahi jo pehle static tags tha */
       var SRC = [
+        /* DAY-CLOCK: "mera din kab shuru hota hai" — sabse pehle, kyunki
+           habits/dashboard/study iski today() use karte hain. */
+        'core/day-clock.js',
         'core/ui.js',
         'ai/engine.js',
         'ai/audio.js',

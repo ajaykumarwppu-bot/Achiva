@@ -93,7 +93,7 @@
     v = parseFloat(v); if (isNaN(v)) v = 0;
     return Math.max(0, Math.min(MAX_PM, v));
   }
-  function todayISO() { return UI.todayISO(); }
+  function todayISO() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }   /* DAY-CLOCK: din ka hisaab; slot-times asli ghadi par */
 
   /* ================================================================
      HABIT SHAPE / MIGRATION
