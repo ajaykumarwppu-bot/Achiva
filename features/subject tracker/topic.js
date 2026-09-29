@@ -892,6 +892,22 @@
      (canvas editor fullscreen mein khulta hai, Draw list mein
      save NAHI hota — back par topic screen par wapas)
   ================================================================ */
+
+  /* POSITIONAL NUMBERING — list aur mind-map DONO ka single source of truth.
+       depth 1 → "1","2",...      depth 2 → "1.1","2.3",...      depth 3+ → "•"
+     Numbers render-time POSITIONAL hain (kuch save nahi hota), isliye list
+     mein reorder/add/delete karte hi agla mind-map generation sahi numbers
+     aur sahi order ke saath banega. */
+  function markerFor(depth, parentNum, index) {
+    if (depth === 1) return String(index + 1);
+    if (depth === 2) return (parentNum || '') + '.' + (index + 1);
+    return '•';
+  }
+
+  /* pehli baar kholne par mind-map ka default template (structured).
+     User settings se badle to chapter.mindmapTemplate mein persist hota hai. */
+  var DEFAULT_MINDMAP_TEMPLATE = 'bothsides';
+
   function sidePair(a, b) {
     var ax = a.x + a.w / 2, ay = a.y + a.h / 2;
     var bx = b.x + b.w / 2, by = b.y + b.h / 2;
@@ -940,25 +956,30 @@
         : { w: w, h: h };
     }
 
-    /* radial placement : har branch ko leaf-count ke hisaab se sector */
-    function placeKids(kids, parentCard, angStart, angSpan, depth) {
+    /* radial placement : har branch ko leaf-count ke hisaab se sector.
+       parentNum saath leke chalta hai taaki har card par positional number
+       (1 / 1.2 / •) lag sake — list wale numbers se exactly match. */
+    function placeKids(kids, parentCard, angStart, angSpan, depth, parentNum) {
       if (!kids.length) return;
       var tot = 0;
       kids.forEach(function (k) { tot += leaves(k); });
       var a = angStart;
-      kids.forEach(function (k) {
+      kids.forEach(function (k, idx) {
         var span = angSpan * (leaves(k) / tot);
         var ang = a + span / 2;
         var R = depth === 0 ? 340 : (depth === 1 ? 250 : 210);
+        /* NUMBERING : list jaisa hi positional marker */
+        var num = markerFor(depth + 1, parentNum, idx);
+        var text = num ? (num + '  ' + k.name) : k.name;
         /* fitted card bada ho to thoda door rakho (overlap kam ho) */
-        var f = fitVia(k.name, 140, 52);
+        var f = fitVia(text, 140, 52);
         R += Math.max(0, Math.max(f.w - 140, f.h - 52)) / 2;
         var cx = parentCard.x + parentCard.w / 2 + Math.cos(ang) * R;
         var cy = parentCard.y + parentCard.h / 2 + Math.sin(ang) * R;
         var kc = mkCard(cx - f.w / 2, cy - f.h / 2, f.w, f.h,
-          DEPTH_COLORS[Math.min(depth + 1, DEPTH_COLORS.length - 1)], k.name);
+          DEPTH_COLORS[Math.min(depth + 1, DEPTH_COLORS.length - 1)], text);
         pairs.push([parentCard, kc]);
-        placeKids(k.children || [], kc, a, span, depth + 1);
+        placeKids(k.children || [], kc, a, span, depth + 1, num);
         a += span;
       });
     }
@@ -1000,7 +1021,7 @@
 
     var fr = fitVia(ch.name, 200, 80);
     var root = mkCard(-fr.w / 2, -fr.h / 2, fr.w, fr.h, DEPTH_COLORS[0], ch.name);
-    placeKids(ch.topics || [], root, -Math.PI, 2 * Math.PI, 0);
+    placeKids(ch.topics || [], root, -Math.PI, 2 * Math.PI, 0, '');
     resolveOverlaps(cards);
     pairs.forEach(function (p) { mkLine(p[0], p[1]); });
 
@@ -1017,6 +1038,16 @@
   function openMindMap() {
     if (!chapter || !window.CanvasEditor) return;
     var mm = buildMindMap(chapter);
+    /* TEMPLATE PREFERENCE (per-chapter, subject-store mein persist) :
+         • pehli baar (koi preference saved nahi)  → DEFAULT structured template
+         • user ne settings se kuch chuna          → wahi yaad rakha jaata hai,
+           back / tab-band / app-restart ke baad bhi wahi khulega
+       Cards har baar topic-tree se FRESH bante hain, isliye list ka order aur
+       numbers hamesha current rehte hain — template sirf positions tay karta hai. */
+    var tid = chapter.mindmapTemplate || DEFAULT_MINDMAP_TEMPLATE;
+    if (window.CanvasTemplates && window.CanvasTemplates.apply) {
+      try { window.CanvasTemplates.apply(mm, tid); } catch (e) { /* ignore */ }
+    }
     window.CanvasEditor.open(mm, function () {
       window.SubjectListBridge.openChapterViewTab('topic');
     });
@@ -1063,17 +1094,15 @@
       return;
     }
 
-    /* numbered tree walk : depth 1 → "1","2"... ; depth 2 → "1.1","2.3"...
-       depth 3+ → bullet nodeRow mein. Numbers render-time POSITIONAL hain
-       (kuch save nahi hota), add/delete/edit par apne aap renumber. */
+    /* numbered tree walk — numbering ab markerFor() se (mind-map ke saath
+       shared), taaki list aur mind-map ke numbers kabhi mismatch na hon.
+       Numbers POSITIONAL hain : reorder/add/delete par apne aap renumber. */
     (function drawRows(nodes, prefix, depth) {
       nodes.forEach(function (n, i) {
         ensureNode(n);
-        var label = depth === 1 ? String(i + 1)
-          : depth === 2 ? prefix + '.' + (i + 1)
-          : '';
-        container.appendChild(nodeRow(n, depth, label));
-        drawRows(n.children, depth === 1 ? String(i + 1) : prefix, depth + 1);
+        var label = markerFor(depth, prefix, i);
+        container.appendChild(nodeRow(n, depth, depth >= 3 ? '' : label));
+        drawRows(n.children, label, depth + 1);
       });
     })(chapter.topics, '', 1);
   }
@@ -1104,5 +1133,12 @@
     rerender();
   }
 
-  window.Topic = { renderChapterView: renderChapterView };
+  window.Topic = {
+    renderChapterView: renderChapterView,
+    /* MIND-MAP + NUMBERING : tests aur cross-feature reuse ke liye expose */
+    buildMindMap: buildMindMap,
+    openMindMap: openMindMap,
+    markerFor: markerFor,
+    DEFAULT_MINDMAP_TEMPLATE: DEFAULT_MINDMAP_TEMPLATE
+  };
 })();

@@ -305,6 +305,28 @@
     return { ok: true, moved: r.moved || 0, template: t };
   }
 
+  /* topic-screen ke auto mind-maps ka id 'mindmap-<chapterId>' hota hai.
+     Aise canvas par template chunte hi preference CHAPTER par persist karo
+     (subject-store), taaki back / reopen / tab-band / app-restart ke baad bhi
+     wahi layout aaye. Generic (user-made) canvases ke liye canvas.template
+     field kaafi hai — wo canvas object ke saath chalta hai. */
+  function rememberPreference(canvas, id) {
+    try {
+      if (!canvas || !canvas.id) return;
+      if (canvas.id.indexOf('mindmap-') !== 0) return;
+      var chId = canvas.id.slice('mindmap-'.length);
+      var ST = window.ST;
+      if (!ST || !ST.state || !Array.isArray(ST.state.subjects)) return;
+      var found = null;
+      ST.state.subjects.forEach(function (s) {
+        (s.chapters || []).forEach(function (c) { if (c && c.id === chId) found = c; });
+      });
+      if (!found) return;
+      found.mindmapTemplate = id;
+      if (ST.persist) ST.persist();
+    } catch (e) { /* preference save na ho paaye to koi baat nahi */ }
+  }
+
   function applyToCurrent(id) {
     var api = window.CanvasEditor && window.CanvasEditor.api;
     if (!api) return { ok: false, msg: 'Canvas editor nahi khula.' };
@@ -315,6 +337,7 @@
     if (!c) return { ok: false, msg: 'Canvas nahi mila.' };
     var r = apply(c, id);
     if (!r.ok) return r;
+    rememberPreference(c, id);          /* mind-map ho to chapter par yaad rakho */
     api.commit();                       /* undo-able + persist */
     if (window.CanvasCards) window.CanvasCards.render();
     if (window.CanvasLines) window.CanvasLines.render();
@@ -373,6 +396,7 @@
     inferHierarchy: inferHierarchy,
     apply: apply,
     applyToCurrent: applyToCurrent,
+    rememberPreference: rememberPreference,
     buildSettings: buildSettings,
     layouts: { bothSides: layoutBothSides }
   };
