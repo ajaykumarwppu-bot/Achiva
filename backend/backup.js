@@ -51,7 +51,11 @@
     { docId: 'tasks',          key: 'achiva.tasks.v1',            label: 'Tasks',             main: true },
     { docId: 'thoughts',       key: 'achiva.thoughts.v1',         label: 'Thoughts (meta)',   main: true },
     { docId: 'thoughtCats',    key: 'achiva.thoughtCats.v1',      label: 'Thought categories', main: true },
-    { docId: 'prefs',          key: 'achiva.prefs.v1',            label: 'App settings',        main: false }
+    { docId: 'prefs',          key: 'achiva.prefs.v1',            label: 'App settings',        main: false },
+    /* DAY-CLOCK : 'Mera Din' (dayStart) setting. main:false kyunki ye study
+       data nahi hai — lekin backup/restore mein jaana zaroori hai, warna naye
+       phone par restore ke baad din wapas raat-12-baje par chala jata. */
+    { docId: 'dayClock',       key: 'achiva.dayclock.v1',         label: 'Mera Din (day start)', main: false }
   ];
 
   function hasCloud() { return !!(CLOUD && CLOUD.ready && CLOUD.ready()); }
