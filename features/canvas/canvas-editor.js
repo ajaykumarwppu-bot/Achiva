@@ -31,6 +31,8 @@
   var ICON_REDO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>';
   var ICON_EYE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   var ICON_AI = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8z"/><path d="M18.5 15l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z"/></svg>';
+  /* CANVAS-PRESENT: play/present glyph (sirf mind-map canvases par dikhta hai) */
+  var ICON_PRESENT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.1v13.8L19 12z"/></svg>';
 
   var canvas = null;
   var readOnly = false;
@@ -92,9 +94,17 @@
     if (readOnly) return;
     if (window.CanvasAI) window.CanvasAI.open();
   });
+  /* CANVAS-PRESENT: Present/Revise mode — sirf topic auto mind-maps par.
+     open() mein visibility set hoti hai (mindmap-* id ya mm metadata). */
+  var presentBtn = toolBtn(ICON_PRESENT, 'Present / Revise');
+  presentBtn.style.display = 'none';
+  presentBtn.addEventListener('click', function () {
+    if (window.CanvasPresent) window.CanvasPresent.start(api);
+  });
   topTools.appendChild(backBtn);
   topTools.appendChild(aiBtn);
   topTools.appendChild(setBtn);
+  topTools.appendChild(presentBtn);
 
   var fitBtn = toolBtn(ICON_FIT, 'Fit to screen');
   var undoBtn = toolBtn(ICON_UNDO, 'Undo');
@@ -479,11 +489,20 @@
 
   /* ---------- open ---------- */
   var backFn = null;
+  /* CANVAS-PRESENT: Present/Revise mode sirf topic auto mind-maps ke liye —
+     id 'mindmap-…' hoti hai ya cards par mm metadata (topic.js stamp karta hai) */
+  function isMindmap(c) {
+    if (!c) return false;
+    if (c.id && String(c.id).indexOf('mindmap-') === 0) return true;
+    return (c.cards || []).some(function (k) { return !!(k && k.mm); });
+  }
   function open(c, onBack) {
     canvas = c;
     backFn = onBack || null;
     readOnly = false;
     applyRO();
+    /* CANVAS-PRESENT: button ko mind-map par hi dikhao */
+    presentBtn.style.display = isMindmap(c) ? '' : 'none';
     if (!Array.isArray(c.groups)) c.groups = [];
     undoStack = []; redoStack = [];
     cancelLP();

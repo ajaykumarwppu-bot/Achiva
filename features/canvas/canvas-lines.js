@@ -218,17 +218,25 @@
       var cv = curveD(pt.a, pt.b);
       var color = effColor(line);
 
+      /* CANVAS-PRESENT: ek line ke saare elements (vis path + arrowheads +
+         text + hit) ek <g data-lid="…"> mein — taaki Present/Revise mode poori
+         line ko ek saath hide/draw kar sake. Behaviour bilkul wahi hai;
+         tempPath (connect-drag) is group ke BAHAR rehta hai. */
+      var g = document.createElementNS(NS, 'g');
+      g.setAttribute('data-lid', line.id);
+
       var vis = document.createElementNS(NS, 'path');
       vis.setAttribute('d', cv.d);
       vis.setAttribute('stroke', color);
       vis.setAttribute('stroke-width', '2');
       vis.setAttribute('fill', 'none');
       vis.setAttribute('stroke-linecap', 'round');
-      E.svg.appendChild(vis);
+      vis.setAttribute('data-vis', '1');
+      g.appendChild(vis);
 
       var mode = line.arrow || 'end';
-      if (mode === 'end' || mode === 'both') E.svg.appendChild(arrowHead(pt.b, cv.c2, color));
-      if (mode === 'start' || mode === 'both') E.svg.appendChild(arrowHead(pt.a, cv.c1, color));
+      if (mode === 'end' || mode === 'both') g.appendChild(arrowHead(pt.b, cv.c2, color));
+      if (mode === 'start' || mode === 'both') g.appendChild(arrowHead(pt.a, cv.c1, color));
 
       if (line.text) {
         var m = midPoint(pt.a, cv.c1, cv.c2, pt.b);
@@ -242,7 +250,7 @@
         t.setAttribute('stroke-width', '4');
         t.setAttribute('paint-order', 'stroke');
         t.textContent = line.text;
-        E.svg.appendChild(t);
+        g.appendChild(t);
       }
 
       var hit = document.createElementNS(NS, 'path');
@@ -257,7 +265,9 @@
         var r = E.viewport.getBoundingClientRect();
         showUI(line, e.clientX - r.left, e.clientY - r.top);
       });
-      E.svg.appendChild(hit);
+      g.appendChild(hit);
+
+      E.svg.appendChild(g);
     });
   }
 

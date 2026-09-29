@@ -978,6 +978,9 @@
         var cy = parentCard.y + parentCard.h / 2 + Math.sin(ang) * R;
         var kc = mkCard(cx - f.w / 2, cy - f.h / 2, f.w, f.h,
           DEPTH_COLORS[Math.min(depth + 1, DEPTH_COLORS.length - 1)], text);
+        /* CANVAS-PRESENT: reveal-order + numbering ke liye hierarchy metadata.
+           Purely additive — editor/renderer isse kuch nahi karte. */
+        kc.mm = { depth: depth + 1, num: num, parentId: parentCard.id };
         pairs.push([parentCard, kc]);
         placeKids(k.children || [], kc, a, span, depth + 1, num);
         a += span;
@@ -1021,6 +1024,7 @@
 
     var fr = fitVia(ch.name, 200, 80);
     var root = mkCard(-fr.w / 2, -fr.h / 2, fr.w, fr.h, DEPTH_COLORS[0], ch.name);
+    root.mm = { depth: 0, num: '', parentId: null };   /* CANVAS-PRESENT: root */
     placeKids(ch.topics || [], root, -Math.PI, 2 * Math.PI, 0, '');
     resolveOverlaps(cards);
     pairs.forEach(function (p) { mkLine(p[0], p[1]); });
