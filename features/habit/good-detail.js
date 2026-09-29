@@ -525,6 +525,21 @@
     scroll.appendChild(row);
     /* STUDY-HABIT: total study time + aaj ka progress (sirf Study card par) */
     if (isStudy) scroll.appendChild(studyTimePanel(h));
+    /* DAY-CLOCK PHASE 3 : aaj ke reps ke ASLI waqt (dual-view ka hissa).
+       Din app-day se gina jaata hai, lekin har rep ka asli timestamp bhi
+       dikhaaya jaata hai taaki user ko dono pata hon. */
+    var todayLog = (h.logs || {})[appToday()];
+    var timesArr = (todayLog && todayLog.times) || [];
+    if (timesArr.length) {
+      var rt = el('div');
+      rt.style.cssText = 'margin:0 18px 12px;font-size:10.5px;color:var(--slate);line-height:1.6';
+      var fmts = timesArr.map(function (ts) {
+        var d = new Date(ts);
+        return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      });
+      rt.innerHTML = 'Aaj ke reps (asli waqt) : <b style="color:var(--ink)">' + esc(fmts.join(', ')) + '</b>';
+      scroll.appendChild(rt);
+    }
     scroll.appendChild(streakPanel(h));
     scroll.appendChild(formationPanel(h));
     screen.appendChild(scroll);

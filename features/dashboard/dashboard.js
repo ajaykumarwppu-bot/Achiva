@@ -143,6 +143,8 @@
     card.appendChild(sub);
 
     scroll.appendChild(card);
+    /* DAY-CLOCK PHASE 3 : "Mera Din" dual-view panel (app-day vs asli tareekhen) */
+    if (window.DashboardMyDay) scroll.appendChild(window.DashboardMyDay.build());
     if (window.DashboardToday) window.DashboardToday.render(scroll);
     screen.appendChild(scroll);
   }

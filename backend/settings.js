@@ -308,29 +308,65 @@
         (d.isCustom ? '' : '  (default — asli tareekh ke barabar)');
     }
 
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px';
+    /* confirm bar : galat tap se din na badle */
+    var pending = null;
+    var confirmBar = document.createElement('div');
+    confirmBar.style.cssText = 'display:none;margin-top:10px;padding:10px 12px;border-radius:12px;' +
+      'border:1px solid rgba(160,106,0,.35);background:rgba(160,106,0,.1);font-size:11.5px;' +
+      'line-height:1.5;color:#a06a00';
+    var confirmTxt = document.createElement('div');
+    var confirmBtns = document.createElement('div');
+    confirmBtns.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+    confirmBar.appendChild(confirmTxt); confirmBar.appendChild(confirmBtns);
+
     var PRESETS = ['00:00', '04:00', '06:00', '08:00', '10:00'];
     var cur = DC ? DC.settings().dayStart : '00:00';
     var btns = [];
+
     function paintChips() {
       PRESETS.forEach(function (p, i) {
-        var on = (p === cur);
+        var on = (p === cur), pend = (p === pending);
         btns[i].style.cssText = 'padding:8px 14px;border-radius:99px;cursor:pointer;font:inherit;' +
           'font-size:12px;font-weight:700;transition:.15s;' +
           (on ? 'background:var(--ink);color:var(--paper);border:1px solid var(--ink)'
-              : 'background:var(--chip-bg);color:var(--slate);border:1px solid var(--s2)');
+            : pend ? 'background:var(--chip-bg);color:var(--ink);border:1px solid var(--ink)'
+            : 'background:var(--chip-bg);color:var(--slate);border:1px solid var(--s2)');
       });
     }
+
+    function hideConfirm() { pending = null; confirmBar.style.display = 'none'; paintChips(); }
+
+    function stage(v) {
+      pending = v;
+      paintChips();
+      confirmTxt.innerHTML = 'Din <b>' + (v === '00:00' ? 'raat 12:00 (default)' : v) +
+        '</b> se shuru hoga.<br>Purana hisaab-kitaab <b>nahi</b> badlega — sirf naya data naye rule par chalega.';
+      confirmBtns.innerHTML = '';
+      var okb = document.createElement('button');
+      okb.type = 'button'; okb.textContent = 'Pakka';
+      okb.style.cssText = 'padding:7px 16px;border-radius:99px;border:0;background:var(--ink);' +
+        'color:var(--paper);font:inherit;font-size:12px;font-weight:700;cursor:pointer';
+      okb.addEventListener('click', function () {
+        cur = pending;
+        if (DC) DC.setDayStart(pending);
+        hideConfirm(); paintPreview();
+      });
+      var nob = document.createElement('button');
+      nob.type = 'button'; nob.textContent = 'Rehne do';
+      nob.style.cssText = 'padding:7px 16px;border-radius:99px;border:1px solid var(--s2);' +
+        'background:transparent;color:var(--slate);font:inherit;font-size:12px;font-weight:700;cursor:pointer';
+      nob.addEventListener('click', hideConfirm);
+      confirmBtns.appendChild(okb); confirmBtns.appendChild(nob);
+      confirmBar.style.display = 'block';
+    }
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px';
     PRESETS.forEach(function (p, i) {
       var b = document.createElement('button');
       b.type = 'button';
       b.textContent = (p === '00:00' ? '12 AM' : p) + (p === '00:00' ? ' (default)' : '');
-      b.addEventListener('click', function () {
-        cur = p;
-        if (DC) DC.setDayStart(p);
-        paintChips(); paintPreview();
-      });
+      b.addEventListener('click', function () { stage(p); });
       btns.push(b); row.appendChild(b);
     });
     box.appendChild(row);
@@ -346,15 +382,11 @@
     tin.style.cssText = 'flex:1;padding:10px 12px;border-radius:12px;border:1px solid var(--s2);' +
       'background:var(--input-bg);font:inherit;font-size:13px;color:var(--ink);outline:none';
     tin.value = cur;
-    tin.addEventListener('change', function () {
-      if (!tin.value) return;
-      cur = tin.value;
-      if (DC) DC.setDayStart(tin.value);
-      paintChips(); paintPreview();
-    });
+    tin.addEventListener('change', function () { if (tin.value) stage(tin.value); });
     crow.appendChild(lab); crow.appendChild(tin);
     box.appendChild(crow);
 
+    box.appendChild(confirmBar);
     paintPreview();
     return box;
   }
