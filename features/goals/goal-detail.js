@@ -38,6 +38,9 @@
   function stopTick() { if (tickId) { window.clearInterval(tickId); tickId = null; } }
 
   function pad(n) { return String(n).padStart(2, '0'); }
+  /* DAY-CLOCK : 'aaj' app ke apne din se (Settings → Mera Din) */
+  function appToday() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
+
 
   /* deadline date ke din ke end (23:59:59) tak ka live countdown */
   function deadlineMs(g) {
@@ -101,7 +104,7 @@
     left.style.cssText = 'flex:1;padding:14px;border:1px solid var(--line);border-radius:18px;' +
       'background:var(--tile-bg);box-shadow:inset 0 1px 0 var(--hl-soft);text-align:center;' +
       'display:flex;flex-direction:column;justify-content:center';
-    var today = UI.todayISO();
+    var today = appToday();
     var preStart = !!g.startDate && today < g.startDate;
     var target = null, capVal = '—', capLab = 'days remaining';
     if (preStart) {

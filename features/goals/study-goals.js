@@ -49,6 +49,9 @@
 
   /* local din ka ISO (YYYY-MM-DD) — heat-map ki date isi se banti hai */
   function localISO(ms) {
+    /* DAY-CLOCK : derived session ka din app-day se (enabledAt cutoff ke
+       wajah se purana data apne asli din par hi rahega) */
+    if (window.DayClock && window.DayClock.dayOf) return window.DayClock.dayOf(ms);
     var d = new Date(ms);
     return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   }

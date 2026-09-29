@@ -40,7 +40,7 @@
   if (!Array.isArray(data.tasks)) data.tasks = [];
   function persist() { window.AppStorage.saveAt(KEY, data); }
   function bridge() { return window.SubjectListBridge; }
-  function today() { return UI.todayISO(); }
+  function today() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }   /* DAY-CLOCK */
 
   /* ---------- date / time helpers ---------- */
   function diffDays(a, b) { return Math.round((UI.fromISO(b) - UI.fromISO(a)) / 86400000); }

@@ -37,7 +37,10 @@
   screen.style.cssText += ';padding-top:58px';
   document.getElementById('app').appendChild(screen);
 
-  var selDate = UI.todayISO();
+  /* DAY-CLOCK : 'aaj' app ke apne din se */
+  function appToday() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
+
+  var selDate = appToday();
   var statusEl = null;
   function statusLine(m) { if (statusEl) statusEl.textContent = m || ''; }
 
@@ -268,10 +271,10 @@
   ================================================================ */
   function stripRange() {
     var dates = S().datesWithThoughts();
-    var start = dates.length ? dates[0] : UI.addDays(UI.todayISO(), -13);
+    var start = dates.length ? dates[0] : UI.addDays(appToday(), -13);
     if (start > selDate) start = selDate;
     if (selDate < start) start = selDate;
-    var end = UI.todayISO();
+    var end = appToday();
     if (end < selDate) end = selDate;
     return { start: start, end: end };
   }

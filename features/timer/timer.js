@@ -37,7 +37,7 @@
     window.AppStorage.saveAt(MKEY, d);
   }
   function todayKey() {
-    return UI.todayISO();
+    return window.DayClock ? window.DayClock.today() : UI.todayISO();   /* DAY-CLOCK */
   }
 
   /* ---------- time formats ---------- */

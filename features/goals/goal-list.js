@@ -52,11 +52,14 @@
     data.goals = data.goals.filter(function (g) { return g.id !== id; });
     persist();
   }
+  /* DAY-CLOCK : 'aaj' app ke apne din se (Settings → Mera Din) */
+  function appToday() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
+
   function addSession(id, minutes, iso, extra) {
     var g = get(id);
     if (!g) return;
     if (!Array.isArray(g.sessions)) g.sessions = [];
-    var s = { date: iso || UI.todayISO(), minutes: Math.max(0, Math.round(minutes)), at: Date.now() };
+    var s = { date: iso || appToday(), minutes: Math.max(0, Math.round(minutes)), at: Date.now() };
     if (extra) { for (var k in extra) s[k] = extra[k]; }
     g.sessions.push(s);
     persist();
@@ -71,7 +74,7 @@
   function daysLeft(g) {
     var e = endDate(g);
     if (!e) return null;
-    return Math.round((new Date(e) - new Date(UI.todayISO())) / 86400000);
+    return Math.round((new Date(e) - new Date(appToday())) / 86400000);
   }
   function totalMinutes(g) {
     var t = 0;
@@ -90,7 +93,7 @@
 
   /* ---------- AUTO STATUS (user choose nahi karta) ---------- */
   function autoStatus(g) {
-    var today = UI.todayISO();
+    var today = appToday();
     var st = partsStats(g);
     var e = endDate(g);
     if (st.total > 0 && st.done === st.total) return 'Completed';

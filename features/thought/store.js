@@ -105,7 +105,7 @@
   function add(o) {
     o.id = o.id || window.UI.uid();
     o.createdAt = o.createdAt || Date.now();
-    o.date = o.date || window.UI.todayISO();
+    o.date = o.date || (window.DayClock ? window.DayClock.today() : window.UI.todayISO());   /* DAY-CLOCK */
     o.status = o.status || 'pending';
     o.catIds = o.catIds || [];
     meta.thoughts.push(o);

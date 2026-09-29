@@ -23,6 +23,9 @@
 (function () {
   'use strict';
 
+  /* DAY-CLOCK : 'aaj' app ke apne din se */
+  function appToday() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
+
   if (window.__achivaGoalTaskLoaded) return;
   window.__achivaGoalTaskLoaded = true;
 
@@ -50,7 +53,7 @@
       : { w: 250, h: 110 };
     b = {
       id: uid(), name: g.title, category: 'goal', goalId: g.id,
-      date: UI.fmtDate(UI.todayISO()),
+      date: UI.fmtDate(appToday()),
       cards: [{ id: uid(), text: g.title, x: 60, y: 60, w: f.w, h: f.h, color: '#ffffff' }],
       lines: [], groups: []
     };
@@ -78,7 +81,7 @@
   }
 
   function taskState(g, c) {
-    var t = c.tag, today = UI.todayISO();
+    var t = c.tag, today = appToday();
     if (t.type === 'date') {
       return { enabled: today >= t.date, done: t.done === true, once: true };
     }
@@ -90,7 +93,7 @@
   }
 
   function toggleDone(g, c) {
-    var t = c.tag, st = taskState(g, c), today = UI.todayISO();
+    var t = c.tag, st = taskState(g, c), today = appToday();
     if (!st.enabled) return;
     if (st.once) t.done = !t.done;
     else {

@@ -63,7 +63,9 @@
   var el = UI.el, esc = UI.esc, uid = UI.uid;
 
   var toISO = UI.toISO, fromISO = UI.fromISO, fmtDate = UI.fmtDate;
-  var addDays = UI.addDays, todayISO = UI.todayISO, nowTime = UI.nowTime;
+  var addDays = UI.addDays, nowTime = UI.nowTime;
+  /* DAY-CLOCK : revision due/aaj ka hisaab app ke apne din se */
+  function todayISO() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
 
   function ensure(ch) {
     if (!ch.revision || typeof ch.revision !== 'object') {

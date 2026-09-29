@@ -37,9 +37,17 @@
     return { mode: 'fixed', fixed: 30 };
   }
 
+  /* DAY-CLOCK : session ka din startMs se (app-day); startMs na ho to stored date.
+     Purana data (startMs ke bina) stored date par hi rahega. */
+  function sessionDay(s) {
+    if (s && s.startMs && window.DayClock && window.DayClock.dayOf) return window.DayClock.dayOf(s.startMs);
+    return s && s.date;
+  }
+  function appToday() { return window.DayClock ? window.DayClock.today() : UI.todayISO(); }
+
   function minutesByDate(g) {
     var m = {};
-    (g.sessions || []).forEach(function (s) { m[s.date] = (m[s.date] || 0) + (s.minutes || 0); });
+    (g.sessions || []).forEach(function (s) { var d = sessionDay(s); m[d] = (m[d] || 0) + (s.minutes || 0); });
     return m;
   }
 
@@ -153,7 +161,7 @@
   /* ---------- month rows builder ---------- */
   function monthRows(g, fromMK, toMK, m) {
     var frag = el('div');
-    var today = UI.todayISO();
+    var today = appToday();
     var end = window.GoalStore.endDate(g) || today;
     var cur = g.startDate;
     var guard = 0;
@@ -371,7 +379,7 @@
     chipsWrap.appendChild(UI.panelTitle('Heat-map', true));
     var pl = planOf(g);
     chipsWrap.appendChild(UI.chip(pl.mode === 'range' ? pl.min + '–' + pl.max + ' min daily' : pl.fixed + ' min daily'));
-    var todayMin = minutesByDate(g)[UI.todayISO()] || 0;
+    var todayMin = minutesByDate(g)[appToday()] || 0;
     var tc = UI.chip('Today ' + todayMin + 'm');
     tc.style.cssText += ';background:rgba(46,160,67,.12);color:#2ea043;border-color:rgba(46,160,67,.35)';
     chipsWrap.appendChild(tc);
@@ -390,7 +398,7 @@
     }
 
     var m = minutesByDate(g);
-    var todayMK = monthKey(UI.todayISO());
+    var todayMK = monthKey(appToday());
     var startMK = monthKey(g.startDate);
     var fromMK = startMK > addMonths(todayMK, -2) ? startMK : addMonths(todayMK, -2);
     var toMK = addMonths(fromMK, 2);
@@ -445,7 +453,7 @@
     wrapP.style.cssText = 'margin:6px 18px 12px;padding:14px;border:1px solid var(--line);border-radius:18px;' +
       'background:var(--tile-bg);box-shadow:inset 0 1px 0 var(--hl-soft)';
     var m = minutesByDate(g);
-    var endMK = monthKey(window.GoalStore.endDate(g) || UI.todayISO());
+    var endMK = monthKey(window.GoalStore.endDate(g) || appToday());
     var startMK = monthKey(g.startDate);
     wrapP.appendChild(monthRows(g, startMK, endMK, m));
     wrapP.appendChild(legend(g));
