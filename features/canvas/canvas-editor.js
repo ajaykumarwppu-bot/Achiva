@@ -3,7 +3,7 @@
    ----------------------------------------------------------------
    • Koi top header nahi — poori screen canvas
    • Side buttons : upar right = Back + AI plan (BYOK, canvas-ai.js)
-                    + Settings ("Coming soon")
+                    + Settings (layout-template chooser — template.js)
                     neeche right = Fit, Undo, Redo, Read-only
    • Infinite viewport : pan, pinch-zoom, wheel-zoom
    • Double-tap (do quick taps) khali jagah → naya card
@@ -77,7 +77,13 @@
   var setModal = UI.modal({ zScrim: 90, zWrap: 91 });
   setBtn.addEventListener('click', function () {
     setModal.open('Settings', function (body) {
-      body.appendChild(el('div', 'empty', 'Coming soon<br>Canvas settings yahan jald add hongi.'));
+      /* TEMPLATE: layout-template chooser (features/canvas/template.js).
+         File load na hui ho to purana "Coming soon" fallback. */
+      if (window.CanvasTemplates && window.CanvasTemplates.buildSettings) {
+        body.appendChild(window.CanvasTemplates.buildSettings(function () { setModal.close(); }));
+      } else {
+        body.appendChild(el('div', 'empty', 'Coming soon<br>Canvas settings yahan jald add hongi.'));
+      }
     }, null);
   });
   /* AI plan (BYOK) — canvas-ai.js; jahan bhi canvas khulta hai wahi button */
