@@ -13,6 +13,8 @@
   <!-- RESPONSIVE (load 5/5) : tablet/laptop/desktop breakpoints.
        Mobile (≤480px) par iska koi rule apply nahi hota. -->
   <link rel="stylesheet" href="style/responsive.css">
+  <!-- DESKTOP SKIN (load 6/6) : sirf wide-screen rules; guard-test gated -->
+  <link rel="stylesheet" href="style/desktop.css">
 
   <!-- theme pehle se laga do (paint se pehle) → dark mode par koi
        "white flash" nahi. Pasand backend/settings.js save karti hai
@@ -152,6 +154,8 @@
         /* DAY-CLOCK: "mera din kab shuru hota hai" — sabse pehle, kyunki
            habits/dashboard/study iski today() use karte hain. */
         'core/day-clock.js',
+        /* FORM-FACTOR : data-form/data-input attributes + per-device prefs */
+        'core/form-factor.js',
         'core/ui.js',
         'ai/engine.js',
         'ai/audio.js',
