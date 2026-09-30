@@ -60,7 +60,7 @@
      dark mein var(--ink) = app wala grey-silver. Koi naya color nahi. */
   .side-nav {
     display: flex;
-    position: absolute; left: 0; top: 0; bottom: 0; width: 236px;
+    position: absolute; left: 0; top: 0; bottom: 0; width: 200px;
     flex-direction: column;
     padding: 14px 12px 12px;
     border-right: 1px solid var(--line);
@@ -68,15 +68,16 @@
     z-index: 46; overflow: hidden;
   }
   .side-nav .sn-brand {
-    font-family: var(--f-disp); font-weight: 700; font-size: 14px;
-    letter-spacing: .1em; color: var(--ink);
-    padding: 4px 14px 12px; border-bottom: 1px solid var(--line);
+    padding: 2px 6px 12px; border-bottom: 1px solid var(--line);
     margin-bottom: 12px; flex: none;
   }
+  /* header ka brand lockup wide par hat-ta hai — rail mein aa chuka hai.
+     (Phone par rail hidden hai, isliye header wala brand wahi dikhta hai.) */
+  .home-top .brand { display: none; }
   .sn-list { position: relative; display: flex; flex-direction: column; gap: 4px; }
   .sn-blob {
-    position: absolute; left: 0; right: 0; top: 0; height: 46px;
-    border-radius: 14px; background: var(--ink);
+    position: absolute; left: 0; right: 0; top: 0; height: 44px;
+    border-radius: 13px; background: var(--ink);
     box-shadow: 0 12px 26px -14px rgba(0,0,0,.6);
     opacity: 0;
     transition: transform .38s cubic-bezier(.34,1.28,.44,1), opacity .2s ease;
@@ -85,9 +86,9 @@
   .side-item {
     position: relative; z-index: 1;
     display: flex; align-items: center; gap: 11px;
-    height: 46px; padding: 0 14px; border: 0; border-radius: 14px;
+    height: 44px; padding: 0 12px; border: 0; border-radius: 13px;
     background: transparent; color: var(--slate);
-    font: inherit; font-size: 13.5px; font-weight: 600;
+    font: inherit; font-size: 13px; font-weight: 600;
     text-align: left; cursor: pointer;
     transition: color .25s ease, background .15s ease;
   }
@@ -142,8 +143,8 @@
    3) DESKTOP (1181px+) : type + spacing thoda aur khula
    ================================================================ */
 @media (min-width: 1181px) {
-  .side-nav { width: 260px; }
-  .app { left: 260px; }
+  .side-nav { width: 220px; }
+  .app { left: 220px; }
   .scroll { max-width: 1320px; }
   .chap-area { max-width: 1320px; }
   body { font-size: 15.5px; }

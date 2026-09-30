@@ -241,7 +241,19 @@
       ];
       var sideNav = UI.el('nav', 'side-nav');
       sideNav.setAttribute('aria-label', 'Features');
-      var snBrand = UI.el('div', 'sn-brand', 'ACHIVA');
+      /* BRAND LOCKUP : header wala poora lockup (teen-line logo + ACHIVA +
+         STUDY OS) yahan rail ke top par. Wide screens par header ka brand
+         CSS se hide hota hai; PHONE par rail hidden hai isliye header wala
+         brand wahi dikhta hai (phone UI 0% change). */
+      var snBrand = UI.el('div', 'brand sn-brand');
+      var snMark = UI.el('span', 'brand-mark');
+      snMark.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" ' +
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+      var snTxt = UI.el('div');
+      snTxt.appendChild(UI.el('div', 'brand-name', 'ACHIVA'));
+      snTxt.appendChild(UI.el('div', 'brand-sub', 'Study OS · v1.0'));
+      snBrand.appendChild(snMark);
+      snBrand.appendChild(snTxt);
       sideNav.appendChild(snBrand);
 
       var snList = UI.el('div', 'sn-list');
