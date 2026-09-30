@@ -38,3 +38,5 @@ Phone/tablet ke baselines **tab hi badalne chahiye jab jaan-boojh kar phone
 UI badla ho** (jo kabhi nahi badalna chahiye). Isliye phone screenshot ka
 diff = red flag. Desktop design badalne par `[visual-update]` use karo aur
 diff report mein confirm karo ki sirf `wide-*` PNGs badle hain, `phone-*` nahi.
+
+<!-- visual-ci-proof: non-visual change -->
