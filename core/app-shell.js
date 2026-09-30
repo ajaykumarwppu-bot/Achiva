@@ -219,10 +219,21 @@
       col.addEventListener('click', onMenuClick);
       row.addEventListener('click', onMenuClick);
 
-      /* ---------- RESPONSIVE : left sidebar nav (wide screens) ----------
-         CSS ise <821px par display:none rakhta hai; wahan FAB menu hi hai.
-         Items wahi data-key use karte hain jo FAB menu karta hai, aur
-         navigate() wahi hai — isliye behaviour identically same hai. */
+      /* ---------- RESPONSIVE : vertical nav rail (sirf wide screens) ----------
+         CSS ise <821px par display:none rakhta hai — phone ki UI/CSS bilkul
+         untouched. Reference-image wala sliding highlight VERTICAL : ek hi
+         .sn-blob element active item par slide karta hai. Blob ka rang CSS
+         mein var(--ink) se aata hai (light=black, dark=grey-silver). */
+      var NAV_ICONS = {
+        dash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
+        subs: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+        habits: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/></svg>',
+        goals: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/></svg>',
+        tasks: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="m3 6 .8.8L5.5 5"/><path d="m3 12 .8.8L5.5 11"/><path d="m3 18 .8.8L5.5 17"/></svg>',
+        thought: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.2-.6L3 21l1.7-4.1A8.4 8.4 0 1 1 21 11.5z"/></svg>',
+        time: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+        draw: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>'
+      };
       var NAV_ITEMS = [
         ['dash', 'Dashboard'], ['subs', 'Subjects'], ['habits', 'Habits'],
         ['goals', 'Goals'], ['tasks', 'Tasks'], ['thought', 'Thoughts'],
@@ -232,24 +243,43 @@
       sideNav.setAttribute('aria-label', 'Features');
       var snBrand = UI.el('div', 'sn-brand', 'ACHIVA');
       sideNav.appendChild(snBrand);
+
+      var snList = UI.el('div', 'sn-list');
+      var snBlob = UI.el('div', 'sn-blob');
+      snList.appendChild(snBlob);
+      sideNav.appendChild(snList);
+
+      var navCurrent = null;
+      function moveBlob(item) {
+        if (!item) return;
+        snBlob.style.height = item.offsetHeight + 'px';
+        snBlob.style.transform = 'translateY(' + item.offsetTop + 'px)';
+        snBlob.style.opacity = '1';
+      }
       function markNav(key) {
-        for (var i = 0; i < sideNav.children.length; i++) {
-          var b = sideNav.children[i];
-          if (b.getAttribute && b.getAttribute('data-key')) {
-            if (b.getAttribute('data-key') === key) b.classList.add('on');
-            else b.classList.remove('on');
-          }
+        navCurrent = key;
+        var items = snList.querySelectorAll('.side-item');
+        for (var i = 0; i < items.length; i++) {
+          var on = items[i].getAttribute('data-key') === key;
+          if (on) { items[i].classList.add('on'); moveBlob(items[i]); }
+          else items[i].classList.remove('on');
         }
       }
       NAV_ITEMS.forEach(function (it) {
         var b = UI.el('button', 'side-item');
         b.type = 'button';
         b.setAttribute('data-key', it[0]);
-        b.textContent = it[1];
+        b.innerHTML = (NAV_ICONS[it[0]] || '') + '<span>' + UI.esc(it[1]) + '</span>';
         b.addEventListener('click', function () { navigate(it[0]); markNav(it[0]); });
-        sideNav.appendChild(b);
+        snList.appendChild(b);
       });
-      /* sidebar .device ke andar (app ke sibling) taaki .app left-shift ho sake */
+      /* window resize par blob ko dobara active item par set karo */
+      window.addEventListener('resize', function () {
+        if (!navCurrent) return;
+        var cur = snList.querySelector('.side-item[data-key="' + navCurrent + '"]');
+        if (cur) moveBlob(cur);
+      });
+      /* rail .device ke andar (app ke sibling) taaki .app left-shift ho sake */
       if (app.parentNode) app.parentNode.appendChild(sideNav);
       window.AchivaNav = { navigate: navigate, markNav: markNav, el: sideNav };
 
