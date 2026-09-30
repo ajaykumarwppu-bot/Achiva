@@ -130,6 +130,7 @@
         strict: 3,
         studyLinked: Date.now(),
         system: true,          /* delete-protection + AUTO badge ka flag */
+        startAuto: true,       /* startDate auto-set hua (user ne nahi chuna) */
         logs: {}
       };
       g.addHabit(h);           /* addHabit khud normalize + persist karta hai */
@@ -150,8 +151,14 @@
 
     var map = minutesByDate();
     var target = h.studyTargetMin || DEFAULT_TARGET;
-    var start = h.startDate || appToday();
     var today = appToday();
+    var start = h.startDate || today;
+    /* BUG-FIX (DayClock): agar setting raat 12 ke baad enable hui to app-aaj
+       PURANA din hota hai, jabki auto startDate naya tha → range khaali ho kar
+       card 8 baje tak khaali dikhta. Auto start date ko app-aaj se aage mat
+       jaane do. User ne khud start date chuni ho (startAuto:false) to unki
+       choice respect hoti hai. */
+    if (h.startAuto !== false && start > today) start = today;
 
     if (!h.logs || typeof h.logs !== 'object') h.logs = {};
 
@@ -319,6 +326,7 @@
 
       h.studyTargetMin = tm;
       h.startDate = startISO;
+      h.startAuto = false;     /* user ne khud chuni — ab clamp mat karo */
       h.strict = parseInt(strictR.get(), 10) || 3;
       h.name = NAME;                       /* naam locked */
       h.type = 'study';                    /* type locked */

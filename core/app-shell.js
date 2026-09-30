@@ -176,12 +176,10 @@
 
       window.AchivaFab = { setVisible: setVisible };
 
-      /* ---------- navigation ---------- */
-      function onMenuClick(e) {
-        var item = e.target.closest('.mitem');
-        if (!item) return;
-        var key = item.getAttribute('data-key');
-        closeMenu();
+      /* ---------- navigation ----------
+         RESPONSIVE: ye ek hi function FAB menu AUR wide-screen sidebar
+         DONO use karte hain — do jagah alag logic nahi. */
+      function navigate(key) {
         var B = window.SubjectListBridge;
         if (key === 'subs') {
           B.show(B.subjectScreen(), false);
@@ -201,8 +199,7 @@
           /* DASH = asli Dashboard (features/dashboard/) */
           if (window.Dashboard) window.Dashboard.open();
         } else if (key === 'thought') {
-          /* THOUGHT = thoughts feature (features/thought/) —
-             FAB ka purana CAL item hat kar ye aaya hai */
+          /* THOUGHT = thoughts feature (features/thought/) */
           if (window.ThoughtFeature) window.ThoughtFeature.open();
         } else if (key === 'tasks') {
           /* TASKS = extra tasks feature (features/task/task.js) */
@@ -212,8 +209,49 @@
           B.show(FEATURE_SCREENS[key], true);
         }
       }
+      function onMenuClick(e) {
+        var item = e.target.closest('.mitem');
+        if (!item) return;
+        var key = item.getAttribute('data-key');
+        closeMenu();
+        navigate(key);
+      }
       col.addEventListener('click', onMenuClick);
       row.addEventListener('click', onMenuClick);
+
+      /* ---------- RESPONSIVE : left sidebar nav (wide screens) ----------
+         CSS ise <821px par display:none rakhta hai; wahan FAB menu hi hai.
+         Items wahi data-key use karte hain jo FAB menu karta hai, aur
+         navigate() wahi hai — isliye behaviour identically same hai. */
+      var NAV_ITEMS = [
+        ['dash', 'Dashboard'], ['subs', 'Subjects'], ['habits', 'Habits'],
+        ['goals', 'Goals'], ['tasks', 'Tasks'], ['thought', 'Thoughts'],
+        ['time', 'Time'], ['draw', 'Draw']
+      ];
+      var sideNav = UI.el('nav', 'side-nav');
+      sideNav.setAttribute('aria-label', 'Features');
+      var snBrand = UI.el('div', 'sn-brand', 'ACHIVA');
+      sideNav.appendChild(snBrand);
+      function markNav(key) {
+        for (var i = 0; i < sideNav.children.length; i++) {
+          var b = sideNav.children[i];
+          if (b.getAttribute && b.getAttribute('data-key')) {
+            if (b.getAttribute('data-key') === key) b.classList.add('on');
+            else b.classList.remove('on');
+          }
+        }
+      }
+      NAV_ITEMS.forEach(function (it) {
+        var b = UI.el('button', 'side-item');
+        b.type = 'button';
+        b.setAttribute('data-key', it[0]);
+        b.textContent = it[1];
+        b.addEventListener('click', function () { navigate(it[0]); markNav(it[0]); });
+        sideNav.appendChild(b);
+      });
+      /* sidebar .device ke andar (app ke sibling) taaki .app left-shift ho sake */
+      if (app.parentNode) app.parentNode.appendChild(sideNav);
+      window.AchivaNav = { navigate: navigate, markNav: markNav, el: sideNav };
 
       document.addEventListener('pointerdown', function (e) {
         if (menuOpen && !col.contains(e.target) && !row.contains(e.target) && !fab.contains(e.target)) closeMenu();

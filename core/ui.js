@@ -239,6 +239,16 @@
     var openFlag = false;
     var saveFn = null;
     var hideTimer = null;
+    /* RESPONSIVE/a11y : Esc se modal band + wide screens par focus modal mein
+       (mobile par auto-focus NAHI — warna keyboard pop ho jata). */
+    var lastFocus = null;
+    function wideScreen() {
+      try { return !!(window.matchMedia && window.matchMedia('(min-width: 821px)').matches); }
+      catch (e) { return false; }
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && openFlag) { e.stopPropagation(); close(); }
+    });
 
     function open(t, build, fn) {
       title.textContent = t;
@@ -246,6 +256,14 @@
       saveFn = fn || null;
       save.style.display = fn ? '' : 'none';
       if (build) build(body);
+      lastFocus = document.activeElement || null;
+      if (wideScreen()) {
+        window.setTimeout(function () {
+          if (!openFlag) return;
+          var f = sheet.querySelector('input, select, textarea, button.btn-solid, button');
+          if (f && f.focus) f.focus();
+        }, 80);
+      }
       if (hideTimer) { window.clearTimeout(hideTimer); hideTimer = null; }
       openFlag = true;
       wrap.style.visibility = 'visible';
@@ -262,6 +280,13 @@
       if (!openFlag) return;
       openFlag = false;
       saveFn = null;
+      /* RESPONSIVE/a11y : focus wapas us element par jo modal se pehle tha */
+      if (lastFocus && lastFocus.focus) {
+        try {
+          if (!document.body || document.body.contains(lastFocus)) lastFocus.focus();
+        } catch (e) { /* ignore */ }
+      }
+      lastFocus = null;
       wrap.style.pointerEvents = 'none';
       /* poora modal (box + numbers sab) ek saath fade out,
          phir visibility hidden — koi alag-alag timing nahi */

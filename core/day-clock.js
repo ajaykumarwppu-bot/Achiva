@@ -122,6 +122,18 @@
     };
   }
 
+  /* settings ko atomically set karo (tests / migration / restore ke liye).
+     setDayStart se alag : ye enabledAt ko bhi explicitly set kar sakta hai. */
+  function configure(o) {
+    var s = load();
+    if (o && typeof o.dayStart === 'string' && /^\d{1,2}:\d{2}$/.test(o.dayStart)) {
+      s.dayStart = pad2(toMin(o.dayStart) / 60 | 0) + ':' + pad2(toMin(o.dayStart) % 60);
+    }
+    if (o && ('enabledAt' in o)) s.enabledAt = o.enabledAt;
+    save(s);
+    return settings();
+  }
+
   window.DayClock = {
     KEY: KEY,
     DEFAULT_START: DEFAULT_START,
@@ -131,6 +143,7 @@
     today: today,
     realISO: realISO,
     setDayStart: setDayStart,
+    configure: configure,
     describe: describe,
     toMin: toMin
   };
