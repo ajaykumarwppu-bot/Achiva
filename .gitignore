@@ -112,3 +112,7 @@ uploads/
 *.bak
 *.orig
 *.rej
+
+# VISUAL CI : current/diff transient hain (baseline commit hota hai)
+tests/visual/current/
+tests/visual/diff/

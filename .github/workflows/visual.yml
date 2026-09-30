@@ -1,0 +1,87 @@
+# ================================================================
+# VISUAL REGRESSION — har push par app ke screenshots lekar
+# baseline se milata hai. Phone/tablet/desktop teeno widths.
+#
+# MODES
+#   normal push            → capture + compare ; farq > allow → FAIL
+#   commit msg mein
+#   "[visual-update]"      → capture karke baselines UPDATE + commit
+#                            (intentional design change ka raasta)
+#
+# Baselines repo mein: tests/visual/baseline/*.png
+# Diff images (fail par): tests/visual/diff/*.png  (artifact mein bhi)
+#
+# LOOP-GUARD : job github-actions[bot] ke pushes par skip hota hai,
+# isliye baseline-commit dobara workflow trigger karke loop nahi banata.
+# ================================================================
+name: Visual Regression
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  visual:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Detect mode
+        id: mode
+        run: |
+          MSG="$(git log -1 --pretty=%s)"
+          echo "commit: $MSG"
+          if echo "$MSG" | grep -q "visual-update"; then
+            echo "update=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "update=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Capture (update baselines)
+        if: steps.mode.outputs.update == '1'
+        run: VISUAL_UPDATE=1 node tests/visual/capture.js
+
+      - name: Capture (current)
+        if: steps.mode.outputs.update == '0'
+        run: node tests/visual/capture.js
+
+      - name: Compare vs baseline
+        if: steps.mode.outputs.update == '0'
+        run: node tests/visual/compare.js
+
+      - name: Commit updated baselines
+        if: steps.mode.outputs.update == '1'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/baseline
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(visual): update baselines [skip-visual]"
+            git push
+          else
+            echo "baselines unchanged"
+          fi
+
+      - name: Upload screenshots + diffs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-screens
+          path: tests/visual
+          retention-days: 14
