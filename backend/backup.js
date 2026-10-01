@@ -55,7 +55,11 @@
     /* DAY-CLOCK : 'Mera Din' (dayStart) setting. main:false kyunki ye study
        data nahi hai — lekin backup/restore mein jaana zaroori hai, warna naye
        phone par restore ke baad din wapas raat-12-baje par chala jata. */
-    { docId: 'dayClock',       key: 'achiva.dayclock.v1',         label: 'Mera Din (day start)', main: false }
+    { docId: 'dayClock',       key: 'achiva.dayclock.v1',         label: 'Mera Din (day start)', main: false },
+    /* FOCUS SHIELD : app-blocking rules + unlock log. main:false (study data
+       nahi), lekin restore zaroori hai warna naye phone par blocking chali
+       jayegi. */
+    { docId: 'focus',          key: 'achiva.focus.v1',            label: 'Focus Shield (app blocking)', main: false }
   ];
 
   function hasCloud() { return !!(CLOUD && CLOUD.ready && CLOUD.ready()); }

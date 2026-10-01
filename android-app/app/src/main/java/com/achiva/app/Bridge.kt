@@ -113,4 +113,96 @@ class Bridge(private val ctx: Context) {
         TimerService.extend(ctx, ms)
         return "1"
     }
+
+    /* ================================================================
+       FOCUS SHIELD (Tier-1 soft-lock) — web ↔ native
+       ================================================================ */
+
+    /** rules JSON set karo (web focus-store se) */
+    @JavascriptInterface
+    fun focusSetRules(json: String) { FocusPrefs.setRules(ctx, json) }
+
+    /** settings JSON set karo */
+    @JavascriptInterface
+    fun focusSetSettings(json: String) { FocusPrefs.setSettings(ctx, json) }
+
+    /** live state push karo (targetDone / studyMinutes / timerRunning) */
+    @JavascriptInterface
+    fun focusPushState(json: String) { FocusPrefs.setState(ctx, json) }
+
+    /** rules + settings + state ek saath (UI load par) */
+    @JavascriptInterface
+    fun focusGetAll(): String {
+        return try {
+            org.json.JSONObject()
+                .put("rules", FocusPrefs.rules(ctx))
+                .put("settings", FocusPrefs.settings(ctx))
+                .put("state", FocusPrefs.state(ctx))
+                .toString()
+        } catch (t: Throwable) { "{}" }
+    }
+
+    /** installed launcher apps (picker ke liye) */
+    @JavascriptInterface
+    fun focusListApps(): String {
+        val out = org.json.JSONArray()
+        try {
+            val pm = ctx.packageManager
+            val main = android.content.Intent(android.content.Intent.ACTION_MAIN)
+            main.addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            val list = pm.queryIntentActivities(main, 0)
+            for (ri in list) {
+                val pkg = ri.activityInfo.packageName
+                if (pkg == ctx.packageName) continue
+                out.put(org.json.JSONObject().put("pkg", pkg)
+                    .put("label", ri.loadLabel(pm).toString()))
+            }
+        } catch (t: Throwable) { /* ignore */ }
+        return out.toString()
+    }
+
+    @JavascriptInterface
+    fun focusStart() { FocusService.start(ctx) }
+
+    @JavascriptInterface
+    fun focusStop() { FocusService.stop(ctx) }
+
+    @JavascriptInterface
+    fun focusRunning(): String = if (FocusService.running) "1" else "0"
+
+    /** overlay (display-over-other-apps) permission */
+    @JavascriptInterface
+    fun focusHasOverlay(): String =
+        if (android.provider.Settings.canDrawOverlays(ctx)) "1" else "0"
+
+    @JavascriptInterface
+    fun focusRequestOverlay() {
+        try {
+            val i = android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:" + ctx.packageName))
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i)
+        } catch (t: Throwable) { /* ignore */ }
+    }
+
+    /** usage-access permission (UsagePlugin ka reuse) */
+    @JavascriptInterface
+    fun focusHasUsage(): String = if (usage.hasPermission()) "1" else "0"
+
+    @JavascriptInterface
+    fun focusOpenUsage() { usage.openSettings() }
+
+    /** emergency unlock : minutes tak saare rules OFF + log */
+    @JavascriptInterface
+    fun focusUnlock(minutes: Int) {
+        try {
+            val st = org.json.JSONObject(FocusPrefs.state(ctx))
+            val now = System.currentTimeMillis()
+            st.put("unlockUntil", now + minutes * 60_000L)
+            st.put("unlockCount", st.optInt("unlockCount", 0) + 1)
+            st.put("lastUnlockAt", now)
+            FocusPrefs.setState(ctx, st.toString())
+        } catch (t: Throwable) { /* ignore */ }
+    }
 }

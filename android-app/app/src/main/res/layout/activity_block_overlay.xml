@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FOCUS SHIELD : full-screen block overlay.
+     Non-cancelable activity : BACK dead hai, recents se hidden (manifest).
+     Sirf do raaste : Achiva kholo ya Emergency unlock (cooldown + log). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="28dp"
+    android:background="#12151a">
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🛡️"
+        android:textSize="44sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Focus Shield active hai"
+        android:textColor="#e8ecf1"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvApp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:textColor="#f5b301"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/tvRule"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="#9aa4b0"
+        android:textSize="13sp"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/tvProg"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:gravity="center"
+        android:textColor="#e8ecf1"
+        android:textSize="14sp"
+        android:text="" />
+
+    <Button
+        android:id="@+id/btnOpen"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="26dp"
+        android:background="#2ea043"
+        android:padding="14dp"
+        android:text="Achiva kholo (padhai shuru)"
+        android:textColor="#ffffff"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btnUnlock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="#26282d"
+        android:padding="14dp"
+        android:text="Emergency unlock (log hoga)"
+        android:textColor="#9aa4b0"
+        android:textSize="13sp" />
+</LinearLayout>

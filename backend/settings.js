@@ -224,6 +224,9 @@
 
     scroll.appendChild(wrapSection(buildTheme()));
     scroll.appendChild(wrapSection(buildDayClock()));
+    if (window.AchivaFocusUI && typeof window.AchivaFocusUI.buildSection === 'function') {
+      scroll.appendChild(wrapSection(window.AchivaFocusUI.buildSection()));
+    }
     scroll.appendChild(wrapSection(buildBackup()));
     scroll.appendChild(wrapSection(buildAccount()));
 

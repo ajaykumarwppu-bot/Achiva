@@ -25,6 +25,16 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- FOCUS SHIELD (Tier-1 soft-lock) :
+         overlay = blocked app ke upar full-screen lock dikhane ke liye
+         (user ko Settings > Display over other apps se allow karna hota hai) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- installed apps ka picker (Android 11+ package visibility) -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+    <!-- reboot ke baad FocusService khud start -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -60,5 +70,35 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FQCN"
                 android:value="com.achiva.app.TimerService" />
         </service>
+
+        <!-- ============ FOCUS SHIELD (Tier-1) ============ -->
+        <!-- full-screen block overlay : recents se hidden, BACK dead -->
+        <activity
+            android:name=".BlockOverlayActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Achiva" />
+
+        <!-- foreground service jo foreground-app watch karta hai -->
+        <service
+            android:name=".FocusService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FQCN"
+                android:value="com.achiva.app.FocusService" />
+        </service>
+
+        <!-- reboot par service dobara -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

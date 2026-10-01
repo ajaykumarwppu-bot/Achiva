@@ -352,6 +352,11 @@
     var wrapped = function (ms, startMs, sessionId, cat) {
       var out = orig.apply(this, arguments);
       try { sync(); afterChange(); } catch (e) { }
+      /* FOCUS SHIELD : target-mode rules ko live state bhejo
+         (studyMinutes / targetDone) — block tabhi khulta hai jab target ho */
+      try {
+        if (window.AchivaFocus && window.AchivaFocus.pushState) window.AchivaFocus.pushState();
+      } catch (e2) { }
       return out;
     };
     wrapped.__studyHabitWrap = true;
@@ -362,6 +367,9 @@
   /* ---------- boot ---------- */
   wrapRecord();
   try { sync(); } catch (e) { /* GoodList ready na ho to ignore */ }
+  try {
+    if (window.AchivaFocus && window.AchivaFocus.syncAll) window.AchivaFocus.syncAll();
+  } catch (e2) { /* ignore */ }
 
   window.StudyHabit = {
     ID: STUDY_ID, NAME: NAME,
