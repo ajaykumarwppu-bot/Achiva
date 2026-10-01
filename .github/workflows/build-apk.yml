@@ -7,6 +7,11 @@ on:
       - 'android-app/**'      # sirf native code badle par rebuild
       - '.github/workflows/build-apk.yml'
 
+# artifact download (purana keystore) ke liye actions:read zaroori hai
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,30 +29,98 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Create signing keystore (first time only)
+      # ──────────────────────────────────────────────────────────────
+      #  SIGNING KEY — STABLE RAKHNA
+      #
+      #  Problem jo pehle thi : achiva.keystore .gitignore mein hai, isliye
+      #  har run par checkout ke baad wo NAHI milti thi aur keytool har baar
+      #  NAYA random key bana deta tha. Natija : har APK ki signature alag →
+      #  naya APK phone par installed app ke upar UPDATE nahi hota
+      #  ("App not installed") → uninstall karna padta → app ka local data
+      #  (localStorage) chala jaata.
+      #
+      #  Fix : pichhle Build APK run ka 'achiva-keystore' artifact wapas
+      #  download karke use karo. Signature hamesha SAME rehti hai.
+      #  Neeche wala upload-step har build mein artifact refresh karta hai,
+      #  isliye chain kabhi expire nahi hoti (retention 90 din, har build
+      #  par reset).
+      #
+      #  Keystore repo mein commit NAHI hota (repo public hai) — sirf
+      #  Actions artifacts mein rehta hai.
+      # ──────────────────────────────────────────────────────────────
+      - name: Signing keystore restore karo (same signature har build)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ ! -f android-app/app/achiva.keystore ]; then
-            keytool -genkeypair -v -keystore android-app/app/achiva.keystore \
-              -alias achiva -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass achiva123 -keypass achiva123 -dname "CN=Achiva"
-            echo "KEYSTORE_CREATED=1" >> $GITHUB_ENV
-            echo "✔ Naya keystore bana — is run ka artifact zaroor download karna"
-          else
-            echo "✔ Repo wala keystore use ho raha hai (same signature)"
+          KS=android-app/app/achiva.keystore
+          if [ -f "$KS" ]; then
+            echo "OK: keystore checkout mein maujood hai — wahi use hoga"
+            exit 0
           fi
+
+          echo "-> Pichhle runs ka 'achiva-keystore' artifact dhoondha ja raha hai..."
+          AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=achiva-keystore&per_page=25" \
+                --jq '[.artifacts[] | select(.expired==false) | .id][0] // empty' 2>/dev/null || true)
+
+          if [ -n "$AID" ]; then
+            rm -rf /tmp/ks /tmp/ks.zip && mkdir -p /tmp/ks
+            if gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > /tmp/ks.zip 2>/dev/null; then
+              unzip -o /tmp/ks.zip -d /tmp/ks >/dev/null 2>&1 \
+                || python3 -c "import zipfile; zipfile.ZipFile('/tmp/ks.zip').extractall('/tmp/ks')" \
+                || true
+            fi
+            if [ -f /tmp/ks/achiva.keystore ]; then
+              cp /tmp/ks/achiva.keystore "$KS"
+              echo "OK: purana keystore restore ho gaya (artifact id=$AID)"
+              echo "    -> signature SAME rahegi : naya APK phone par UPDATE hoga, data safe"
+              exit 0
+            fi
+            echo "::warning::Artifact $AID se keystore nahi nikla"
+          fi
+
+          echo "::warning::PURANA KEYSTORE NAHI MILA — naya banaya ja raha hai. Is build ka APK phone par pehle se installed app ke upar update NAHI hoga (uninstall karna padega, app ka local data chale jaayega)."
+          keytool -genkeypair -v -keystore "$KS" \
+            -alias achiva -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass achiva123 -keypass achiva123 -dname "CN=Achiva"
+          echo "KEYSTORE_CREATED=1" >> $GITHUB_ENV
 
       - name: Build debug APK
         run: cd android-app && gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Upload keystore (sirf pehli baar)
-        if: env.KEYSTORE_CREATED == '1'
+      # Har build mein keystore wapas upload — taaki agla build isi ko restore
+      # kare aur 90-din ki artifact-retention se chain kabhi na toote.
+      - name: Upload keystore artifact (signature chain)
         uses: actions/upload-artifact@v4
         with:
           name: achiva-keystore
           path: android-app/app/achiva.keystore
+          if-no-files-found: error
+          retention-days: 90
+
+      # Build ke baad fingerprint + version print karo — log mein hi confirm
+      # ho jaata hai ki signature pichle build jaisi hai aur versionCode badha.
+      - name: APK verify (signature fingerprint + version)
+        run: |
+          APK=android-app/app/build/outputs/apk/debug/app-debug.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | tail -1)
+          echo "===== APK SIGNATURE ====="
+          # NOTE: APK sirf v2 scheme se sign hota hai, isliye keytool (v1/JAR)
+          # kuch print nahi karta — apksigner hi sahi tool hai.
+          if [ -n "$BT" ] && [ -x "$BT/apksigner" ]; then
+            "$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | grep -E "certificate DN|SHA-256" \
+              || echo "(apksigner se cert nahi mila)"
+          else
+            keytool -printcert -jarfile "$APK" 2>/dev/null | grep -E "Owner|SHA256:" || echo "(cert print nahi ho paya)"
+          fi
+          echo "===== APK PACKAGE INFO ====="
+          [ -n "$BT" ] && "$BT/aapt" dump badging "$APK" 2>/dev/null | grep -E "^package:|^sdkVersion|^targetSdkVersion" || true
+          echo "===== NOTE ====="
+          echo "SHA-256 fingerprint pichle Build APK run ke fingerprint se MATCH karna chahiye."
+          echo "Match nahi hua to phone par update ke bajaye 'App not installed' aayega."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: achiva-apk
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90

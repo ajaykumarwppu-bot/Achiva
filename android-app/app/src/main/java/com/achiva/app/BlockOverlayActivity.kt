@@ -14,6 +14,8 @@ import org.json.JSONObject
  *
  * • BACK button dead hai ; recents se hidden (manifest excludeFromRecents)
  * • Har 1 sec mein check : rule abhi bhi active hai? nahi → khud finish
+ * • HOME/recents se nikalne par khud finish → zombie task nahi banta ;
+ *   blocked app dobara khulte hi FocusService naya overlay khol deta hai
  * • Do nikalne ke raaste :
  *     [Achiva kholo]        → MainActivity (padhai ki taraf)
  *     [Emergency unlock]    → settings.cooldownMin tak sab rules OFF
@@ -22,8 +24,16 @@ import org.json.JSONObject
  */
 class BlockOverlayActivity : Activity() {
 
+    companion object {
+        /* lock screen abhi screen par hai? FocusService isi se decide karta hai
+           ki dobara launch karna hai ya nahi (relaunch loop se bachne ke liye) */
+        @Volatile var showing = false
+            private set
+    }
+
     private val handler = Handler(Looper.getMainLooper())
     private var pkg: String = ""
+    private var rule: String = "Focus"
 
     private val poll = object : Runnable {
         override fun run() {
@@ -32,7 +42,7 @@ class BlockOverlayActivity : Activity() {
                     finish()
                     return
                 }
-                paintUnlockBtn()
+                paint()
             } catch (t: Throwable) { /* ignore */ }
             handler.postDelayed(this, 1000)
         }
@@ -41,14 +51,48 @@ class BlockOverlayActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         setContentView(R.layout.activity_block_overlay)
-        pkg = intent?.getStringExtra("pkg") ?: ""
-        val rule = intent?.getStringExtra("rule") ?: "Focus"
 
+        val btnOpen = findViewById<Button>(R.id.btnOpen)
+        val btnUnlock = findViewById<Button>(R.id.btnUnlock)
+
+        btnOpen.setOnClickListener {
+            try {
+                val i = Intent(this, MainActivity::class.java)
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                startActivity(i)
+            } catch (t: Throwable) { /* ignore */ }
+            finish()
+        }
+        btnUnlock.setOnClickListener { tryUnlock() }
+
+        readIntent(intent)
+        paint()
+        handler.post(poll)
+    }
+
+    /* singleInstance launch-mode : dobara block par wahi instance aata hai aur
+       naya intent onNewIntent mein milta hai — warna purani app ka naam dikhta
+       rehta (aur progress bhi stale rehti). */
+    override fun onNewIntent(i: Intent?) {
+        super.onNewIntent(i)
+        try {
+            setIntent(i)
+            readIntent(i)
+            paint()
+        } catch (t: Throwable) { /* ignore */ }
+    }
+
+    private fun readIntent(i: Intent?) {
+        pkg = i?.getStringExtra("pkg") ?: pkg
+        rule = i?.getStringExtra("rule") ?: rule
+    }
+
+    /* labels + progress + unlock button ek saath (onCreate, onNewIntent, poll) */
+    private fun paint() {
         val tvApp = findViewById<TextView>(R.id.tvApp)
         val tvRule = findViewById<TextView>(R.id.tvRule)
         val tvProg = findViewById<TextView>(R.id.tvProg)
-        val btnOpen = findViewById<Button>(R.id.btnOpen)
-        val btnUnlock = findViewById<Button>(R.id.btnUnlock)
+        if (tvApp == null || tvRule == null || tvProg == null) return
 
         tvApp.text = labelOf(pkg)
         tvRule.text = rule
@@ -62,18 +106,20 @@ class BlockOverlayActivity : Activity() {
             else "Aaj ki padhai: " + fmt(mins) + " / " + fmt(target) + " min"
         } catch (t: Throwable) { tvProg.text = "" }
 
-        btnOpen.setOnClickListener {
-            try {
-                val i = Intent(this, MainActivity::class.java)
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                startActivity(i)
-            } catch (t: Throwable) { /* ignore */ }
-            finish()
-        }
-        btnUnlock.setOnClickListener { tryUnlock() }
-
         paintUnlockBtn()
-        handler.post(poll)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        showing = true
+    }
+
+    /* user HOME / recents se nikal gaya → ye task zombie na bane, khud band ho
+       jaao. Blocked app dobara khulte hi FocusService naya overlay khol dega. */
+    override fun onPause() {
+        showing = false
+        super.onPause()
+        try { finish() } catch (t: Throwable) { /* ignore */ }
     }
 
     private fun fmt(d: Double): String {
@@ -121,6 +167,7 @@ class BlockOverlayActivity : Activity() {
     override fun onBackPressed() { /* jaan-boojh kar dead */ }
 
     override fun onDestroy() {
+        showing = false
         handler.removeCallbacks(poll)
         super.onDestroy()
     }

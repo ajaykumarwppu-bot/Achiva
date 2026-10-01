@@ -11,8 +11,8 @@ android {
         applicationId "com.achiva.app"
         minSdk 26
         targetSdk 34
-        versionCode 6
-        versionName "1.5"
+        versionCode 7
+        versionName "1.6"
 
         // ★★ apna GitHub Pages URL (ending slash / ke saath) ★★
         // NOTE: Pages path CASE-SENSITIVE hai — repo 'Achiva' hai, isliye '/Achiva/' (capital A)

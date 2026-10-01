@@ -66,9 +66,11 @@
             android:name=".TimerService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
+            <!-- Android 14+ : specialUse ke liye yahi property naam valid hai
+                 (PROPERTY_SPECIAL_USE_FQCN exist nahi karta) -->
             <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FQCN"
-                android:value="com.achiva.app.TimerService" />
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="study_session_timer_with_alarm" />
         </service>
 
         <!-- ============ FOCUS SHIELD (Tier-1) ============ -->
@@ -87,8 +89,8 @@
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FQCN"
-                android:value="com.achiva.app.FocusService" />
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="focus_shield_app_blocking_watchdog" />
         </service>
 
         <!-- reboot par service dobara -->

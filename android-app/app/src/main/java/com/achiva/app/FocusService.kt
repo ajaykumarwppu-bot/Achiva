@@ -8,9 +8,11 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 
 /**
  * FOCUS SHIELD — Tier-1 (soft-lock) enforcement service.
@@ -18,8 +20,10 @@ import android.os.Looper
  * Har ~1.5 sec mein foreground app padhta hai (UsageStatsManager, wahi
  * tareeka jo UsagePlugin on-demand use karta hai). Agar foreground app
  * kisi ACTIVE rule ki blocked-list mein hai :
- *    1. BlockOverlayActivity (full-screen, non-cancelable) kholo
- *    2. HOME intent bhejo taaki blocked app peeche chhup jaaye
+ *    1. HOME intent bhejo → blocked app background mein chala jaaye
+ *    2. BlockOverlayActivity (full-screen, non-cancelable) uske upar kholo
+ * Default launcher (HOME) package kabhi block nahi hota — warna step-1
+ * khud block ho kar phone atak jaata.
  *
  * Ye "hard block" NAHI hai (Android normal apps ko wo power nahi deta) —
  * ye ek strong soft-lock hai : overlay hatane ke liye user ko jaan-boojh
@@ -57,6 +61,9 @@ class FocusService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var blockedPkg: String? = null
+    private var homePkg: String? = null
+    private var lastNotif: String? = null
+    private val usage by lazy { UsagePlugin(this) }
 
     private val tick = object : Runnable {
         override fun run() {
@@ -69,8 +76,12 @@ class FocusService : Service() {
         super.onCreate()
         running = true
         createChannel()
+        /* pehli notification hi bata de ki permission adhoori hai (agar hai) */
+        val w = permWarning()
+        val initial = if (w.isEmpty()) "Focus Shield chalu hai" else w
+        lastNotif = initial
         try {
-            startForeground(NOTIF_ID, notif("Focus Shield chalu hai"))
+            startForeground(NOTIF_ID, notif(initial))
         } catch (t: Throwable) {
             /* notification na ban payi (channel/post blocked) → service ko
                marne do, warna system ForegroundServiceDidNotStart crash deta hai */
@@ -115,17 +126,46 @@ class FocusService : Service() {
         } catch (t: Throwable) { /* ignore */ }
     }
 
+    /* same text par baar-baar notify mat karo (har 1.5s poll spam karta) */
+    private fun setNotif(text: String) {
+        if (text == lastNotif) return
+        lastNotif = text
+        updateNotif(text)
+    }
+
+    /* Permission missing hone par service CHUP-CHAAP kuch nahi kar sakti —
+       isliye notification mein hi bata do, warna user ko lagega feature
+       chalu hai par apps block nahi ho rahi. */
+    private fun permWarning(): String {
+        val miss = ArrayList<String>()
+        try { if (!usage.hasPermission()) miss.add("Usage access") } catch (t: Throwable) { }
+        try {
+            if (!Settings.canDrawOverlays(this)) miss.add("Display over other apps")
+        } catch (t: Throwable) { }
+        return if (miss.isEmpty()) "" else "⚠️ permission chahiye: " + miss.joinToString(" + ")
+    }
+
     /* ---------- foreground package (UsageEvents se) ---------- */
     private fun foregroundPkg(): String? {
         try {
             val usm = getSystemService("usagestats") as UsageStatsManager
             val now = System.currentTimeMillis()
-            val events = usm.queryEvents(now - 60_000L, now + 1_000L)
+            val events = usm.queryEvents(now - 120_000L, now + 1_000L)
             var last: String? = null
             val e = UsageEvents.Event()
             while (events.hasNextEvent()) {
                 events.getNextEvent(e)
-                if (e.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) last = e.packageName
+                when (e.eventType) {
+                    UsageEvents.Event.MOVE_TO_FOREGROUND -> last = e.packageName
+                    /* app background mein chala gaya → purane (stale) foreground
+                       ko maan'na band karo. Warna kuch launchers ke resume-event
+                       na bhejne par overlay baar-baar khulta rehta. */
+                    UsageEvents.Event.MOVE_TO_BACKGROUND ->
+                        if (last == e.packageName) last = null
+                    /* lock screen upar hai → abhi koi block nahi */
+                    UsageEvents.Event.KEYGUARD_SHOWN -> last = null
+                    else -> { /* baaki events ignore */ }
+                }
             }
             return last
         } catch (t: Throwable) {
@@ -133,20 +173,61 @@ class FocusService : Service() {
         }
     }
 
+    /* default HOME (launcher) ka package. Ise kabhi block NAHI karna —
+       warna goHome() khud block ho jaata aur phone atak jaata. */
+    private fun launcherPkg(): String {
+        homePkg?.let { return it }
+        return try {
+            val h = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val p = packageManager
+                .resolveActivity(h, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo?.packageName ?: ""
+            homePkg = p
+            p
+        } catch (t: Throwable) { "" }
+    }
+
     /* ---------- main loop ---------- */
     private fun step() {
+        /* permission adhoori hai → block karne ki koshish bekaar hai
+           (overlay/activity background se khul hi nahi sakti) — user ko
+           notification se batao aur ruko */
+        val warn = permWarning()
+        if (warn.isNotEmpty()) {
+            if (blockedPkg != null) blockedPkg = null
+            setNotif(warn)
+            return
+        }
+
+        /* lock screen already khula hua hai → kuch mat karo
+           (warna har poll par activity relaunch hoti rahegi) */
+        if (BlockOverlayActivity.showing) return
+
         val pkg = foregroundPkg() ?: return
         if (pkg == packageName) { blockedPkg = null; return }
+
+        val home = launcherPkg()
+        if (home.isNotEmpty() && pkg == home) {
+            if (blockedPkg != null) {
+                blockedPkg = null
+                setNotif("Focus Shield chalu hai")
+            }
+            return
+        }
 
         val rule = FocusRules.blockingRule(this, pkg)
         if (rule != null) {
             blockedPkg = pkg
-            openOverlay(pkg, rule.optString("name", "Focus"))
+            /* ORDER ZAROORI HAI : pehle HOME (blocked app background mein chala
+               jaaye), phir lock screen upar. Ulta order karne par HOME intent
+               lock screen ko dhak deta tha — user ko sirf home screen dikhti
+               thi, overlay kabhi nahi. */
             goHome()
-            updateNotif("Block kiya: " + labelOf(pkg))
+            openOverlay(pkg, rule.optString("name", "Focus"))
+            setNotif("Block kiya: " + labelOf(pkg))
         } else if (blockedPkg != null) {
             blockedPkg = null
-            updateNotif("Focus Shield chalu hai")
+            setNotif("Focus Shield chalu hai")
         }
     }
 
