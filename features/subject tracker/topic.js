@@ -133,9 +133,10 @@
   var ICON_FLAG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4c4-2 8 2 12 0v10c-4 2-8-2-12 0"/></svg>';
   var ICON_CHECK = UI.icons.check;
   var ICON_MM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/><path d="M9.5 10.5L6 7.5M14.5 10.5l3.5-3M9.5 13.5L6 16.5M14.5 13.5l3.5 3"/></svg>';
-  /* NOTES indicator (notes.js) : chhota file-text icon — card par tab
-     dikhta hai jab node ke andar notes/title likha ho */
-  var ICON_NOTE = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>';
+  /* NOTES indicator (notes.js) : chhota file-text icon — kebab ke just
+     neeche absolute dikhta hai (card size par zero asar) jab node ke
+     andar notes/title likha ho */
+  var ICON_NOTE = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>';
 
   function hasNotes(n) {
     return !!((n.notes && String(n.notes).trim()) ||
@@ -299,13 +300,6 @@
       'white-space:pre-wrap;word-break:break-word;' +
       (n.done ? 'text-decoration:line-through;color:var(--ash)' : '');
     main.appendChild(name);
-    /* NOTES indicator : andar notes likhe hue hain to chhota icon */
-    if (hasNotes(n)) {
-      var noteIco = el('span', null, ICON_NOTE);
-      noteIco.title = 'Notes';
-      noteIco.style.cssText = 'display:inline-flex;align-items:center;flex:none;color:var(--ash);margin-top:3px';
-      main.appendChild(noteIco);
-    }
     if (n.tag) {
       var chip = el('span', 'chip-st', TAG_LABEL[n.tag]);
       if (n.tag === 'vvi') {
@@ -375,6 +369,23 @@
           ? 'font-size:9px'
           : 'font-size:10px;font-weight:600;font-variant-numeric:tabular-nums');
       row.appendChild(num);
+    }
+
+    /* NOTES indicator : 3-dot (kebab) ke JUST NEECHE — absolute, isliye
+       card ki height/width/geometry par ZERO asar (level-number jaisa
+       hi pattern). Kebab hamesha rightmost button hota hai (row ka
+       right padding 10px + button 26px → center right:23px, bottom
+       ~36px), isliye icon right:18px/top:36px par hamesha uske neeche
+       hi aata hai — chahe name kitna bhi lamba ho.
+       pointer-events:none → click row par hi jaata hai (notes khulti hai). */
+    if (hasNotes(n)) {
+      var noteIco = el('span', null, ICON_NOTE);
+      noteIco.title = 'Notes';
+      noteIco.setAttribute('aria-hidden', 'true');
+      noteIco.style.cssText = 'position:absolute;right:18px;top:36px;width:10px;height:10px;' +
+        'display:flex;align-items:center;justify-content:center;color:var(--ash);' +
+        'pointer-events:none';
+      row.appendChild(noteIco);
     }
 
     /* DRAG handle : long-press → lift & reorder (touch + mouse).

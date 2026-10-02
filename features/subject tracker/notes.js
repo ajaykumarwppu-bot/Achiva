@@ -117,15 +117,11 @@
     var gearBtn = roundBtn(ICON_GEAR, 'Settings');
     head.appendChild(gearBtn);
 
-    /* AI — PLACEHOLDER: kaam baad mein add hoga (pill topic.js ke
-       "Add Topic" button jaisi hi) */
-    var aiBtn = el('button', null, ICON_AI + '<span>AI</span>');
-    aiBtn.type = 'button';
-    aiBtn.setAttribute('aria-label', 'AI');
-    aiBtn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;' +
-      'border-radius:99px;border:1px solid var(--s2);background:var(--chip-bg);font:inherit;' +
-      'font-size:12px;font-weight:700;color:var(--ink2);cursor:pointer;flex:none;' +
-      'box-shadow:inset 0 1px 0 var(--hl-soft)';
+    /* AI — SIRF icon (text nahi), gear jitna hi 34px round button →
+       heading (notes title) ke liye zyada jagah milta hai.
+       PLACEHOLDER: is par Copy Prompt / Preview wala popup plan hai
+       (ai/protocol layer — abhi wiring baaki). */
+    var aiBtn = roundBtn(ICON_AI, 'AI');
     head.appendChild(aiBtn);
 
     screen.appendChild(head);
