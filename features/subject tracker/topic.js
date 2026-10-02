@@ -82,6 +82,9 @@
     if (!Array.isArray(n.children)) n.children = [];
     if (n.tag == null) n.tag = '';
     n.done = !!n.done;
+    /* NOTES (notes.js) : optional fields — purane nodes safe */
+    if (n.notes == null) n.notes = '';
+    if (n.notesTitle == null) n.notesTitle = '';
   }
 
   /* recursive walk : har node par fn(node, depth) */
@@ -130,6 +133,25 @@
   var ICON_FLAG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4c4-2 8 2 12 0v10c-4 2-8-2-12 0"/></svg>';
   var ICON_CHECK = UI.icons.check;
   var ICON_MM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/><path d="M9.5 10.5L6 7.5M14.5 10.5l3.5-3M9.5 13.5L6 16.5M14.5 13.5l3.5 3"/></svg>';
+  /* NOTES indicator (notes.js) : chhota file-text icon — card par tab
+     dikhta hai jab node ke andar notes/title likha ho */
+  var ICON_NOTE = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>';
+
+  function hasNotes(n) {
+    return !!((n.notes && String(n.notes).trim()) ||
+              (n.notesTitle && String(n.notesTitle).trim()));
+  }
+
+  /* NOTES screen kholo (notes.js) — card ke middle click se.
+     persist = commit (poora state save), onSaved = rerender
+     (indicator turant refresh). */
+  function openNotes(n) {
+    try {
+      if (window.Notes && window.Notes.open) {
+        window.Notes.open(n, { persist: commit, onSaved: rerender });
+      }
+    } catch (e) { }
+  }
 
   var app = document.getElementById('app');
 
@@ -268,14 +290,22 @@
     });
     row.appendChild(tick);
 
-    /* name + tag chip */
+    /* name + tag chip — MIDDLE ZONE : yahan click = Notes screen khulti
+       hai (cursor:pointer affordance ke liye) */
     var main = el('div');
-    main.style.cssText = 'flex:1;min-width:0;display:flex;align-items:flex-start;gap:7px;flex-wrap:wrap';
+    main.style.cssText = 'flex:1;min-width:0;display:flex;align-items:flex-start;gap:7px;flex-wrap:wrap;cursor:pointer';
     var name = el('div', null, esc(n.name));
     name.style.cssText = 'font-size:13.5px;line-height:1.5;color:var(--ink2);' +
       'white-space:pre-wrap;word-break:break-word;' +
       (n.done ? 'text-decoration:line-through;color:var(--ash)' : '');
     main.appendChild(name);
+    /* NOTES indicator : andar notes likhe hue hain to chhota icon */
+    if (hasNotes(n)) {
+      var noteIco = el('span', null, ICON_NOTE);
+      noteIco.title = 'Notes';
+      noteIco.style.cssText = 'display:inline-flex;align-items:center;flex:none;color:var(--ash);margin-top:3px';
+      main.appendChild(noteIco);
+    }
     if (n.tag) {
       var chip = el('span', 'chip-st', TAG_LABEL[n.tag]);
       if (n.tag === 'vvi') {
@@ -360,6 +390,25 @@
       if (dnd || e.button !== 0) return;
       if (onBtn(e.target)) return;
       scheduleLP(n, depth, row, e.clientX, e.clientY, false);
+    });
+
+    /* OPEN NOTES : card ke MIDDLE (name area / row body) par click →
+       notes.js screen. Tick / + / flag / kebab BUTTONS par click se
+       NAHI khulti (onBtn guard) — user tick karte waqt galti se
+       andar na chala jaye. Drag ke turant baad ka accidental click
+       bhi swallow hota hai (suppressClickUntil — container ka capture
+       guard bhi hai, ye double safety). Popover ke andar ki click
+       already stopPropagation hoti hai (UI.makeKebabPop / basePop),
+       phir bhi .pop ancestor check extra safety hai. */
+    row.addEventListener('click', function (e) {
+      if (dnd || Date.now() < suppressClickUntil) return;
+      if (onBtn(e.target)) return;
+      var t = e.target;
+      while (t && t !== row) {
+        if (t.classList && t.classList.contains('pop')) return;
+        t = t.parentNode;
+      }
+      openNotes(n);
     });
     return row;
   }
