@@ -14,22 +14,26 @@
                        BAHAR topic list ka naam waisa hi rehta hai
      • Eyebrow       : "NOTES" (chhota uppercase label)
      • Gear button   : Settings — abhi PLACEHOLDER (kaam baad mein)
-     • AI button     : abhi PLACEHOLDER (kaam baad mein)
-     • Body          : full-screen textarea — AUTO-SAVE (debounce
-                       ~350ms), koi Save button nahi; back/close par
-                       bhi flush. Purana data safe: notes/notesTitle
-                       optional fields hain.
+     • AI button     : icon-only round button (gear jitna) —
+                       PLACEHOLDER: Copy Prompt / Preview popup plan
+                       hai (Phase 2 — AI protocol)
+     • WRITE / READ  : toggle chips.
+                       Write = full-screen textarea, AUTO-SAVE
+                       (~350ms debounce), koi Save button nahi;
+                       back/close par flush.
+                       Read  = rendered view — text ke andar $...$
+                       (inline) aur $$...$$ (block) math KaTeX se
+                       typeset hote hain (ai/math-render.js +
+                       vendor/katex). Rendered formula par TAP →
+                       LaTeX editor modal (live preview + cheatsheet).
+     • Data          : node.notes (text) + node.notesTitle (string) —
+                       chapter.topics ke saath main state mein persist
+                       (AppStorage) + Firebase backup. Purana data
+                       safe: dono optional fields.
 
-   DATA : node.notes (string) + node.notesTitle (string) — chapter
-   ke topics ke saath hi main state mein persist (AppStorage) aur
-   Firebase backup mein jaate hain. Indicator (topic.js) isi se
-   banta hai : notes ya title likha ho → card par chhota icon.
-
-   Screen pattern SubjectSetting.js jaisa hi : section.screen +
-   SubjectListBridge.show (prev screen yaad rakhta hai, back par
-   wahin wapas). ES5-only.
-
-   window.Notes = { open(node, opts), close(), isOpen() }
+   Screen pattern SubjectSetting.js jaisa : section.screen +
+   SubjectListBridge.show (prev screen yaad, back par wahi).
+   ES5-only. window.Notes = { open(node, opts), close(), isOpen() }
    opts : { persist(), onSaved() }  — topic.js bhejta hai.
    ================================================================ */
 
@@ -45,6 +49,9 @@
   var ICON_GEAR = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h0a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h0a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>';
   var ICON_AI = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8z"/><path d="M18.5 15l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z"/></svg>';
   var ICON_BACK = UI.icons.back;
+  /* view toggle : Write (pencil) / Read (eye) */
+  var ICON_WRITE = UI.icons.edit;
+  var ICON_READ = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 
   var SAVE_DEBOUNCE = 350;   /* ms — type karte hi auto-save */
 
@@ -52,6 +59,9 @@
   var prevScreen = null;
   var current = null;        /* { node, opts } */
   var titleInput = null, ta = null;
+  var body = null, readWrap = null, readBody = null;
+  var writeBtn = null, readBtn = null;
+  var viewMode = 'write';
   var saveTimer = null;
   var touched = false;       /* user ne textarea mein type kiya */
   var titleTouched = false;  /* user ne heading edit ki */
@@ -119,20 +129,42 @@
 
     /* AI — SIRF icon (text nahi), gear jitna hi 34px round button →
        heading (notes title) ke liye zyada jagah milta hai.
-       PLACEHOLDER: is par Copy Prompt / Preview wala popup plan hai
-       (ai/protocol layer — abhi wiring baaki). */
+       PLACEHOLDER: is par Copy Prompt / Preview wala popup Phase 2
+       mein aayega (AI protocol layer). */
     var aiBtn = roundBtn(ICON_AI, 'AI');
     head.appendChild(aiBtn);
 
     screen.appendChild(head);
 
-    /* ---------- body : full-height notes textarea (auto-save) ---------- */
-    var body = el('div');
-    body.style.cssText = 'flex:1;min-height:0;display:flex;padding-top:4px';
+    /* ---------- VIEW TOGGLE : Write / Read ----------
+       Write = raw textarea (auto-save, jaisa pehle tha).
+       Read  = rendered view — $...$ / $$...$$ formulas KaTeX se
+       typeset (math-render.js). Rendered formula par TAP →
+       LaTeX editor modal (live preview + cheatsheet). */
+    var viewRow = el('div', 'chips');
+    viewRow.style.padding = '6px 16px 8px';
+
+    function viewChip(iconHtml, label) {
+      var b = el('button', 'chip', iconHtml + '<span>' + label + '</span>');
+      b.type = 'button';
+      b.style.cssText += ';display:inline-flex;align-items:center;gap:6px';
+      return b;
+    }
+    writeBtn = viewChip(ICON_WRITE, 'Write');
+    readBtn = viewChip(ICON_READ, 'Read');
+    writeBtn.addEventListener('click', function () { setView('write'); });
+    readBtn.addEventListener('click', function () { setView('read'); });
+    viewRow.appendChild(writeBtn);
+    viewRow.appendChild(readBtn);
+    screen.appendChild(viewRow);
+
+    /* ---------- WRITE view : full-height textarea (auto-save) ---------- */
+    body = el('div');
+    body.style.cssText = 'flex:1;min-height:0;display:flex;padding-top:2px';
 
     ta = el('textarea');
     ta.setAttribute('aria-label', 'Notes');
-    ta.placeholder = 'Yahan apne notes likho…';
+    ta.placeholder = 'Yahan apne notes likho… (math ke liye $...$ ya $$...$$)';
     ta.style.cssText = 'flex:1;width:100%;resize:none;border:none;outline:none;background:transparent;' +
       'font:inherit;font-size:14px;line-height:1.75;color:var(--ink);' +
       'padding:10px 18px calc(28px + env(safe-area-inset-bottom,0px));' +
@@ -142,10 +174,186 @@
       scheduleSave();
     });
     body.appendChild(ta);
-
     screen.appendChild(body);
+
+    /* ---------- READ view : rendered notes (KaTeX math) ---------- */
+    readWrap = el('div');
+    readWrap.style.cssText = 'flex:1;min-height:0;overflow-y:auto;display:none;overscroll-behavior:contain';
+    readBody = el('div', 'notes-read');
+    readBody.style.cssText = 'padding:8px 18px calc(28px + env(safe-area-inset-bottom,0px))';
+    /* rendered formula par tap → editor modal (data-mi = span index) */
+    readBody.addEventListener('click', function (e) {
+      var t = e.target;
+      while (t && t !== readBody) {
+        if (t.getAttribute && t.getAttribute('data-mi') != null) {
+          var spans = window.MathRender ? window.MathRender.getSpans() : [];
+          var mi = parseInt(t.getAttribute('data-mi'), 10);
+          if (spans[mi]) openFormulaEditor(spans[mi]);
+          return;
+        }
+        t = t.parentNode;
+      }
+    });
+    readWrap.appendChild(readBody);
+    screen.appendChild(readWrap);
+
     app.appendChild(screen);
     return screen;
+  }
+
+  /* ================================================================
+     WRITE / READ SWITCH + READ RENDER
+  ================================================================ */
+  function setView(mode) {
+    viewMode = mode;
+    var writing = mode !== 'read';
+    if (writeBtn) writeBtn.classList.toggle('sel', writing);
+    if (readBtn) readBtn.classList.toggle('sel', !writing);
+    if (body) body.style.display = writing ? 'flex' : 'none';
+    if (readWrap) readWrap.style.display = writing ? 'none' : 'block';
+    if (!writing) renderRead();
+  }
+
+  function renderRead() {
+    if (!readBody) return;
+    try {
+      if (window.MathRender && window.MathRender.renderText) {
+        window.MathRender.renderText(readBody, ta.value);
+        /* KaTeX abhi load nahi hua (vendor slow/404) aur text mein $
+           hai → chhoti hint, warna user ko lagega render toota hai */
+        if (!window.MathRender.available() && String(ta.value).indexOf('\u0024') !== -1) {
+          var warn = el('div', 'nr-empty',
+            'Math engine (KaTeX) load nahi hua — formulas raw dikh rahe hain.');
+          readBody.insertBefore(warn, readBody.firstChild);
+        }
+      } else {
+        /* MathRender hi nahi hai → plain pre-wrap text (fail-safe) */
+        readBody.innerHTML = '';
+        var pre = el('div', 'nr-line');
+        pre.appendChild(document.createTextNode(ta.value || 'Abhi kuch nahi likha — Write mein jao.'));
+        readBody.appendChild(pre);
+      }
+    } catch (e) {
+      readBody.innerHTML = '';
+      readBody.appendChild(el('div', 'nr-empty', 'Read view render nahi ho paya.'));
+    }
+  }
+
+  /* ================================================================
+     FORMULA EDITOR MODAL — Read view ke rendered formula par tap
+     ------------------------------------------------------------
+     • LaTeX source textarea + LIVE KaTeX preview (200ms debounce)
+     • "Common patterns" cheatsheet chips — tap = cursor par insert
+       (LaTeX na jaanne wale user ke liye trial-error aasan)
+     • Save → notes text mein span ki jagah naya formula replace +
+       auto-save + Read view re-render
+  ================================================================ */
+  var formulaModal = UI.modal({ zScrim: 92, zWrap: 93 });
+  var editingSpan = null;
+
+  var CHEATS = [
+    { l: 'a⁄b', c: '\\frac{a}{b}' },
+    { l: '√x', c: '\\sqrt{x}' },
+    { l: 'x²', c: 'x^{2}' },
+    { l: 'xᵢ', c: 'x_{i}' },
+    { l: '∫', c: '\\int_{a}^{b} f(x)\\,dx' },
+    { l: 'Σ', c: '\\sum_{i=1}^{n}' },
+    { l: 'vec', c: '\\vec{a}' },
+    { l: '±', c: '\\pm' },
+    { l: '×', c: '\\times' },
+    { l: '÷', c: '\\div' },
+    { l: '≠', c: '\\neq' },
+    { l: '≤', c: '\\leq' },
+    { l: '≥', c: '\\geq' },
+    { l: '≈', c: '\\approx' },
+    { l: '∞', c: '\\infty' },
+    { l: 'θ', c: '\\theta' },
+    { l: 'ν', c: '\\nu' },
+    { l: 'φ', c: '\\phi' },
+    { l: 'ω', c: '\\omega' },
+    { l: 'λ', c: '\\lambda' },
+    { l: 'μ', c: '\\mu' },
+    { l: '∂y⁄∂x', c: '\\frac{\\partial y}{\\partial x}' },
+    { l: 'lim', c: '\\lim_{x \\to 0}' },
+    { l: 'log', c: '\\log_{10}' },
+    { l: '→', c: '\\rightarrow' },
+    { l: 'chem', c: '\\ce{A + B -> C}' },
+    { l: 'matrix', c: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}' }
+  ];
+
+  function openFormulaEditor(span) {
+    editingSpan = span;
+    formulaModal.open(span.display ? 'Edit Formula (block)' : 'Edit Formula', function (mb) {
+      mb.appendChild(el('label', null, 'LaTeX'));
+      var src = el('textarea');
+      src.rows = 3;
+      src.value = span.latex;
+      src.style.cssText = UI.fieldCss + ';resize:vertical;line-height:1.6;' +
+        'font-family:var(--f-mono);font-size:13px';
+      mb.appendChild(src);
+
+      mb.appendChild(el('label', null, 'Preview'));
+      var prev = el('div');
+      prev.style.cssText = 'min-height:52px;padding:12px;border-radius:12px;' +
+        'border:1px solid var(--s2);background:var(--card-bg);overflow-x:auto;text-align:center';
+      mb.appendChild(prev);
+
+      var prevTimer = null;
+      function paintPrev() {
+        try {
+          prev.innerHTML = window.MathRender
+            ? window.MathRender.renderMathHtml(src.value, span.display)
+            : '';
+        } catch (e) { }
+      }
+      function updatePreview() {
+        if (prevTimer) window.clearTimeout(prevTimer);
+        prevTimer = window.setTimeout(function () { prevTimer = null; paintPrev(); }, 200);
+      }
+      src.addEventListener('input', updatePreview);
+      paintPrev();                     /* pehla render turant */
+
+      /* cheatsheet : tap = cursor par insert */
+      mb.appendChild(el('label', null, 'Common patterns (tap = insert)'));
+      var cWrap = el('div', 'chips');
+      cWrap.style.cssText = 'padding:0;flex-wrap:wrap;max-height:110px;overflow-y:auto';
+      CHEATS.forEach(function (ch) {
+        var b = el('button', 'chip', ch.l);
+        b.type = 'button';
+        b.style.fontSize = '11px';
+        b.style.padding = '5px 10px';
+        b.addEventListener('click', function () {
+          var pos = src.selectionStart == null ? src.value.length : src.selectionStart;
+          var posEnd = src.selectionEnd == null ? pos : src.selectionEnd;
+          src.value = src.value.slice(0, pos) + ch.c + src.value.slice(posEnd);
+          var np = pos + ch.c.length;
+          src.focus();
+          try { src.setSelectionRange(np, np); } catch (e) { }
+          updatePreview();
+        });
+        cWrap.appendChild(b);
+      });
+      mb.appendChild(cWrap);
+
+      mb._get = function () { return src.value; };
+      window.setTimeout(function () { if (formulaModal.isOpen()) src.focus(); }, 260);
+    }, function () {
+      /* SAVE : notes text mein span replace */
+      var newLatex = formulaModal.body._get ? formulaModal.body._get() : '';
+      applyFormulaEdit(newLatex);
+      formulaModal.close();
+    });
+  }
+
+  function applyFormulaEdit(newLatex) {
+    if (!editingSpan || !ta) return;
+    var s = editingSpan;
+    var d = s.display ? '\u0024\u0024' : '\u0024';   /* $$ ya $ */
+    ta.value = ta.value.slice(0, s.start) + d + newLatex + d + ta.value.slice(s.end);
+    editingSpan = null;
+    touched = true;
+    persistNow();          /* turant save (debounce ka wait nahi) */
+    renderRead();          /* Read view fresh spans ke saath */
   }
 
   /* ================================================================
@@ -190,6 +398,7 @@
     titleInput.value = node.notesTitle || node.name || '';
     ta.value = node.notes || '';
     ta.scrollTop = 0;
+    setView('write');                /* har open Write tab se shuru */
 
     /* jahan se khola, wahi yaad rakho — back par wahi wapas */
     var act = document.querySelector('section.screen.active');

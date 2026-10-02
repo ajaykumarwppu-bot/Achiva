@@ -15,6 +15,10 @@
   <link rel="stylesheet" href="style/responsive.css">
   <!-- DESKTOP SKIN (load 6/6) : sirf wide-screen rules; guard-test gated -->
   <link rel="stylesheet" href="style/desktop.css">
+  <!-- KATEX (vendor) : notes Read view ke math formulas render karne ke
+       liye. Local bundle — offline chalta hai, koi CDN nahi. Fonts
+       vendor/katex/fonts/ se aate hain (sirf woff2, ~296KB). -->
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
 
   <!-- theme pehle se laga do (paint se pehle) → dark mode par koi
        "white flash" nahi. Pasand backend/settings.js save karti hai
@@ -237,7 +241,15 @@
         'backend/backup.js',
         'backend/settings.js',
         'core/app-shell.js',
-        'core/boot.js'
+        'core/boot.js',
+        /* KATEX (math rendering — notes.js Read view). Sabse AAKHIR mein:
+           ~300KB parse se app boot delay na ho. Fail-safe: load na ho
+           to MathRender.available() false → notes Read view formulas
+           raw $..$ text dikhata hai + hint, app kabhi rukti nahi.
+           math-render.js inke BAAD (window.katex use karta hai). */
+        'vendor/katex/katex.min.js',
+        'vendor/katex/contrib/mhchem.min.js',   /* \ce{...} chemistry eqs */
+        'ai/math-render.js'
       ];
       var storageReady = false, docReady = false, started = false;
       function loadNext(i) {

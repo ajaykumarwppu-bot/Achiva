@@ -10,6 +10,7 @@ on:
       - '**/features/**'
       - '**/backend/**'
       - '**/ai/**'              # ← FIX : ai folder bhi trigger kare
+      - '**/vendor/**'          # KATEX: vendor bundle (math fonts/js/css)
       - '.github/workflows/deploy-web.yml'
 
 permissions:
@@ -40,7 +41,8 @@ jobs:
           echo "✔ Web root mila: $WEB_ROOT"
           mkdir -p _site
           cp "$WEB_ROOT/index.html" _site/
-          for d in style core features backend ai; do
+          # vendor/ = KaTeX bundle (math fonts/js/css) — notes Read view ke liye
+          for d in style core features backend ai vendor; do
             if [ -d "$WEB_ROOT/$d" ]; then
               cp -r "$WEB_ROOT/$d" _site/
             else

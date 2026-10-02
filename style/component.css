@@ -247,3 +247,14 @@
 [data-theme="dark"] .tone.sel{outline-color:#eef1f5}
 [data-theme="dark"] .date-chip{box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
 [data-theme="dark"] .sheet input:focus{border-color:#5a6470;box-shadow:0 0 0 3px rgba(150,162,178,.15)}
+
+/* ---------- NOTES READ VIEW (notes.js + ai/math-render.js + KaTeX) ---------- */
+.notes-read{font-size:14px;line-height:1.75;color:var(--ink)}
+.nr-line{min-height:1.4em;white-space:pre-wrap;word-break:break-word}
+.nr-math-display{margin:12px 0;padding:6px 4px;overflow-x:auto;overflow-y:hidden;
+  text-align:center;cursor:pointer;border-radius:10px}
+.nr-math-inline{cursor:pointer;border-radius:6px;padding:0 1px}
+.nr-math-display:active,.nr-math-inline:active{background:var(--mist)}
+.nr-math-err{color:#c0392b;font-family:var(--f-mono);font-size:12px;word-break:break-all}
+.nr-empty{color:var(--ash);font-size:13px;padding:22px 4px;text-align:center}
+[data-theme="dark"] .nr-math-err{color:#e08a8a}
