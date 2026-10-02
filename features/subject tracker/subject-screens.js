@@ -114,6 +114,39 @@
   subTop.appendChild(addSubjectBtn);
   subjectScreen.appendChild(subTop);
 
+  /* ---------- CATEGORY FILTER CHIPS : All / JEE / Boards ----------
+     "Add Subject" heading ke THEEK NEECHE — subject cards ko category
+     se filter karte hain. Row subjectScroll ke BAHAR hai isliye chips
+     header ke saath fixed rehte hain, list neeche scroll hoti hai.
+     Category data subject.cat mein hota hai (subject-store SUBJECT_CATS). */
+  var SUBJECT_CATS = (ST && ST.SUBJECT_CATS) ||
+    [{ id: 'jee', label: 'JEE' }, { id: 'boards', label: 'Boards' }];
+  var FILTERS = [{ id: 'all', label: 'All' }].concat(SUBJECT_CATS);
+  var subjectFilter = 'all';
+  var filterBtns = {};
+
+  function paintFilterChips() {
+    FILTERS.forEach(function (f) {
+      if (filterBtns[f.id]) filterBtns[f.id].classList.toggle('sel', f.id === subjectFilter);
+    });
+  }
+
+  var subChips = el('div', 'chips');
+  subChips.style.padding = '4px 18px 10px';   /* subject screen ke 18px gutters se align */
+  FILTERS.forEach(function (f) {
+    var b = el('button', 'chip' + (f.id === subjectFilter ? ' sel' : ''), f.label);
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      if (subjectFilter === f.id) return;
+      subjectFilter = f.id;
+      paintFilterChips();
+      renderSubjects();
+    });
+    filterBtns[f.id] = b;
+    subChips.appendChild(b);
+  });
+  subjectScreen.appendChild(subChips);
+
   var subjectScroll = el('div', 'scroll');
   var subjectList = el('div', 'chap-list');
   subjectScroll.appendChild(subjectList);
@@ -321,6 +354,34 @@
   var sheetInput = el('input');
   sheetInput.type = 'text';
   sheetInput.autocomplete = 'off';
+
+  /* ---------- CATEGORY SELECTOR (sirf subject add/edit modes mein dikhta hai) ----------
+     JEE / Boards chips — Add Subject mein default JEE selected, Edit Subject
+     mein subject ki current category. Selected chip dobara tap = deselect
+     (subject bina category ke → sirf "All" filter mein dikhega). */
+  var sheetCatLabel = el('label', null, 'Category');
+  var sheetCatRow = el('div', 'chips');
+  sheetCatRow.style.padding = '2px 0 0';
+  var sheetCat = null;
+  var sheetCatBtns = {};
+
+  function paintSheetCat() {
+    SUBJECT_CATS.forEach(function (c) {
+      if (sheetCatBtns[c.id]) sheetCatBtns[c.id].classList.toggle('sel', sheetCat === c.id);
+    });
+  }
+
+  SUBJECT_CATS.forEach(function (c) {
+    var b = el('button', 'chip', c.label);
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      sheetCat = (sheetCat === c.id) ? null : c.id;
+      paintSheetCat();
+    });
+    sheetCatBtns[c.id] = b;
+    sheetCatRow.appendChild(b);
+  });
+
   var sheetActions = el('div', 'sheet-actions');
   var sheetCancel = el('button', 'btn-ghost', 'Cancel');
   var sheetSave = el('button', 'btn-solid', 'Save');
@@ -331,7 +392,8 @@
   sheet.appendChild(sheetTitle);
   sheet.appendChild(sheetLabel);
   sheet.appendChild(sheetInput);
-
+  sheet.appendChild(sheetCatLabel);           /* SUBJECT-CAT: category selector */
+  sheet.appendChild(sheetCatRow);
   sheet.appendChild(sheetActions);
   sheetWrap.appendChild(sheet);
   app.appendChild(sheetWrap);
@@ -345,24 +407,32 @@
       sheetLabel.textContent = 'Subject name';
       sheetInput.placeholder = 'e.g. Mathematics';
       sheetInput.value = '';
+      sheetCat = 'jee';                       /* naya subject : default JEE */
     } else if (mode === 'chapter') {
       sheetTitle.textContent = 'Add Chapter';
       sheetLabel.textContent = 'Chapter name';
       sheetInput.placeholder = 'e.g. Quadratic Equations';
       sheetInput.value = '';
+      sheetCat = null;
     } else if (mode === 'edit-subject') {
       sheetTitle.textContent = 'Edit Subject';
       sheetLabel.textContent = 'Subject name';
       sheetInput.placeholder = 'Subject name';
       sheetInput.value = target.name;
+      sheetCat = target.cat || null;          /* current category preselect */
     } else {
       sheetTitle.textContent = 'Edit Chapter';
       sheetLabel.textContent = 'Chapter name';
       sheetInput.placeholder = 'Chapter name';
       sheetInput.value = target.name;
+      sheetCat = null;
     }
 
-    /* chapter modes mein extra fields dikhao */
+    /* category selector sirf subject add/edit modes mein dikhe */
+    var showCat = (mode === 'subject' || mode === 'edit-subject');
+    sheetCatLabel.style.display = showCat ? '' : 'none';
+    sheetCatRow.style.display = showCat ? '' : 'none';
+    paintSheetCat();
 
     sheetOpen = true;
     if (sheetHideTimer) { window.clearTimeout(sheetHideTimer); sheetHideTimer = null; }
@@ -406,10 +476,19 @@
         editTarget.name = name;
         if (currentChapter === editTarget) viewTitle.textContent = name;
       } else if (sheetMode === 'subject') {
-        ST.state.subjects.push({ id: uid(), name: name, chapters: [] });
+        /* SUBJECT-CAT: category ke saath naya subject */
+        ST.state.subjects.push({ id: uid(), name: name, chapters: [], cat: sheetCat || null });
+        /* agar active filter mein naya subject dikhega hi nahi (jaise
+           Boards filter ON hai aur subject JEE bana), to filter "All"
+           par reset karo — user ko naya subject turant dikhna chahiye */
+        if (subjectFilter !== 'all' && subjectFilter !== (sheetCat || null)) {
+          subjectFilter = 'all';
+          paintFilterChips();
+        }
       } else if (sheetMode === 'chapter') {
       } else if (sheetMode === 'edit-subject' && editTarget) {
         editTarget.name = name;
+        editTarget.cat = sheetCat || null;    /* SUBJECT-CAT: category update */
         if (currentSubject === editTarget) chapTitle.textContent = name;
       }
       ST.persist();
@@ -484,7 +563,14 @@
       return;
     }
 
+    /* SUBJECT-CAT FILTER : 'all' → sab subjects, warna sirf matching
+       category. forEach ORIGINAL list par chalta hai (index i se tile
+       color stable rehta hai — filter badalne par card ke rang
+       idhar-udhar nahi hote), bas non-matching cards skip hote hain. */
+    var shown = 0;
     ST.state.subjects.forEach(function (subject, i) {
+      if (subjectFilter !== 'all' && (subject.cat || null) !== subjectFilter) return;
+      shown++;
       var total = subject.chapters.length;
       var done = ST.doneCount(subject);
       var pct = safeSubjectPct(subject);
@@ -530,9 +616,12 @@
       }
       main.appendChild(mid);
 
-      /* done/total chapters · % line */
+      /* category (JEE/Boards) · done/total chapters · % line
+         (category META line mein hi — card ki height wahi rehti hai,
+         jaise study-time label ke saath ki gayi thi) */
+      var catLbl = ST.subjectCatLabel ? ST.subjectCatLabel(subject.cat) : '';
       main.appendChild(el('div', 'sub-meta',
-        done + '/' + total + ' chapters · ' + pct + '%'));
+        (catLbl ? esc(catLbl) + ' · ' : '') + done + '/' + total + ' chapters · ' + pct + '%'));
 
       card.appendChild(main);
 
@@ -546,6 +635,20 @@
       card.addEventListener('click', function () { openChapters(subject); });
       subjectList.appendChild(card);
     });
+
+    /* SUBJECT-CAT FILTER: is filter mein ek bhi subject nahi aaya */
+    if (!shown) {
+      var fLabel = 'All';
+      FILTERS.forEach(function (f) { if (f.id === subjectFilter) fLabel = f.label; });
+      var fEmpty = el('div', 'empty',
+        'No ' + esc(fLabel) + ' subjects yet.<br>' +
+        (subjectFilter === 'all'
+          ? '+ button se apna pehla subject add karo.'
+          : 'Koi subject is category mein nahi hai — "All" chip par jao<br>' +
+            'ya subject ko Edit karke category set karo.'));
+      fEmpty.style.margin = '0 18px 12px';
+      subjectList.appendChild(fEmpty);
+    }
 
     updateBooks();
   }

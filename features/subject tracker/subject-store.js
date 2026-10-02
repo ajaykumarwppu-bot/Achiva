@@ -74,6 +74,25 @@
   }
   function catLabel(id) { var c = catById(id); return c ? c.label : ''; }
 
+  /* ================================================================
+     SUBJECT-CATS : subject categories (JEE / Boards)
+     Har subject par `cat` (id) save hota hai — 'jee' | 'boards' | null.
+     Subject screen ke filter chips (All / JEE / Boards) aur Add/Edit
+     Subject sheet ka category selector isi list se bante hain.
+     Purane (bina-cat) subjects null rehte hain → sirf "All" mein dikhte
+     hain; Edit Subject se kabhi bhi category set ki ja sakti hai.
+  ================================================================ */
+  var SUBJECT_CATS = [
+    { id: 'jee', label: 'JEE' },
+    { id: 'boards', label: 'Boards' }
+  ];
+  function subjectCatById(id) {
+    if (!id) return null;
+    for (var i = 0; i < SUBJECT_CATS.length; i++) if (SUBJECT_CATS[i].id === id) return SUBJECT_CATS[i];
+    return null;
+  }
+  function subjectCatLabel(id) { var c = subjectCatById(id); return c ? c.label : ''; }
+
   /* (duplicate STUDY_KEY/studyContext declarations hata diye — TIMER-FIX:
      upar wala restore na toote) */
   function recordStudy(ms, startMs, sessionId, cat) {
@@ -144,6 +163,10 @@
     /* SESSION-CAT */
     CATS: CATS,
     catById: catById,
-    catLabel: catLabel
+    catLabel: catLabel,
+    /* SUBJECT-CATS (JEE / Boards) */
+    SUBJECT_CATS: SUBJECT_CATS,
+    subjectCatById: subjectCatById,
+    subjectCatLabel: subjectCatLabel
   };
 })();
