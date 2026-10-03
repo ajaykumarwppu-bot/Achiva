@@ -127,11 +127,12 @@
     var gearBtn = roundBtn(ICON_GEAR, 'Settings');
     head.appendChild(gearBtn);
 
-    /* AI — SIRF icon (text nahi), gear jitna hi 34px round button →
-       heading (notes title) ke liye zyada jagah milta hai.
-       PLACEHOLDER: is par Copy Prompt / Preview wala popup Phase 2
-       mein aayega (AI protocol layer). */
+    /* AI button → NotesAI popup (ai/notes-ai.js — Phase 2) :
+       Copy Prompt → bahar ka AI → output paste → Preview (wahi
+       KaTeX render jo Read view mein) → Save (append/replace).
+       gear jitna hi 34px round, sirf icon. */
     var aiBtn = roundBtn(ICON_AI, 'AI');
+    aiBtn.addEventListener('click', function () { openAiPopup(); });
     head.appendChild(aiBtn);
 
     screen.appendChild(head);
@@ -354,6 +355,39 @@
     touched = true;
     persistNow();          /* turant save (debounce ka wait nahi) */
     renderRead();          /* Read view fresh spans ke saath */
+  }
+
+  /* ================================================================
+     AI POPUP (Phase 2) — ✨ button → ai/notes-ai.js
+     Context ST.getStudyContext() se (subject/chapter naam tab set
+     hote hain jab chapter view khulta hai) + node ka naam.
+     Save par: text ta mein → auto-save persist → Read view par
+     switch (result turant rendered dikhe).
+  ================================================================ */
+  function openAiPopup() {
+    try {
+      if (!window.NotesAI || !window.NotesAI.open) return;   /* file load na hui ho */
+      var ctx = {};
+      try {
+        var sc = window.ST && window.ST.getStudyContext ? window.ST.getStudyContext() : null;
+        if (sc) {
+          ctx.subjectName = sc.subjectName || '';
+          ctx.chapterName = sc.chapterName || '';
+        }
+      } catch (e) { }
+      ctx.topicName = (current && current.node) ? (current.node.name || '') : '';
+      window.NotesAI.open({
+        context: ctx,
+        existingText: ta ? ta.value : '',
+        onSave: function (finalText) {
+          if (!ta) return;
+          ta.value = finalText;
+          touched = true;
+          persistNow();          /* turant save */
+          setView('read');       /* AI notes turant rendered dikhein */
+        }
+      });
+    } catch (e) { }
   }
 
   /* ================================================================
