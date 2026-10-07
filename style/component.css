@@ -251,10 +251,40 @@
 /* ---------- NOTES READ VIEW (notes.js + ai/math-render.js + KaTeX) ---------- */
 .notes-read{font-size:14px;line-height:1.75;color:var(--ink)}
 .nr-line{min-height:1.4em;white-space:pre-wrap;word-break:break-word}
-.nr-math-display{margin:12px 0;padding:6px 4px;overflow-x:auto;overflow-y:hidden;
+.nr-math-display{display:block;margin:12px 0;padding:6px 4px;overflow-x:auto;overflow-y:hidden;
   text-align:center;cursor:pointer;border-radius:10px}
 .nr-math-inline{cursor:pointer;border-radius:6px;padding:0 1px}
 .nr-math-display:active,.nr-math-inline:active{background:var(--mist)}
 .nr-math-err{color:#c0392b;font-family:var(--f-mono);font-size:12px;word-break:break-all}
 .nr-empty{color:var(--ash);font-size:13px;padding:22px 4px;text-align:center}
 [data-theme="dark"] .nr-math-err{color:#e08a8a}
+
+/* ---------- NOTES READ VIEW : MARKDOWN (math-render rich path) ---------- */
+.notes-read h1,.notes-read h2,.notes-read h3,.notes-read h4{font-family:var(--f-disp);
+  color:var(--ink);line-height:1.3;margin:14px 0 6px;font-weight:700}
+.notes-read h1{font-size:1.35em}
+.notes-read h2{font-size:1.2em}
+.notes-read h3{font-size:1.1em}
+.notes-read h4{font-size:1em}
+.notes-read h1:first-child,.notes-read h2:first-child{margin-top:4px}
+.notes-read p{margin:6px 0}
+.notes-read ul,.notes-read ol{margin:6px 0;padding-left:22px}
+.notes-read ul{list-style:disc}
+.notes-read ol{list-style:decimal}
+.notes-read li{margin:3px 0}
+.notes-read li>ul,.notes-read li>ol{margin:2px 0}
+.notes-read hr{border:none;border-top:1px solid var(--line);margin:14px 0}
+.notes-read table{border-collapse:collapse;margin:10px 0;width:100%;font-size:13px;
+  display:block;overflow-x:auto}
+.notes-read th,.notes-read td{border:1px solid var(--s2);padding:6px 9px;text-align:left}
+.notes-read th{background:var(--mist);font-weight:700}
+.notes-read blockquote{margin:8px 0;padding:6px 12px;border-left:3px solid var(--s2);color:var(--slate)}
+.notes-read code{font-family:var(--f-mono);font-size:12px;background:var(--mist);
+  padding:1px 5px;border-radius:5px}
+.notes-read pre{background:var(--mist);padding:10px 12px;border-radius:10px;overflow-x:auto;margin:8px 0}
+.notes-read pre code{background:none;padding:0}
+.notes-read a{color:var(--steel);text-decoration:underline}
+.notes-read strong{font-weight:700;color:var(--ink)}
+[data-theme="dark"] .notes-read th{background:#20262e}
+[data-theme="dark"] .notes-read th,[data-theme="dark"] .notes-read td{border-color:#333a45}
+[data-theme="dark"] .notes-read code,[data-theme="dark"] .notes-read pre{background:#20262e}

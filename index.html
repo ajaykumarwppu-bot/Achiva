@@ -249,6 +249,12 @@
            math-render.js inke BAAD (window.katex use karta hai). */
         'vendor/katex/katex.min.js',
         'vendor/katex/contrib/mhchem.min.js',   /* \ce{...} chemistry eqs */
+        /* MARKDOWN LAYER (notes Read view): markdown-it parser + DOMPurify
+           sanitizer. math-render.js ka RICH path in dono par chalta hai;
+           koi ek bhi load na ho to purana PLAIN renderer fallback hai
+           (content kabhi lost nahi). */
+        'vendor/markdown-it/markdown-it.min.js',
+        'vendor/purify/purify.min.js',
         'ai/math-render.js',
         /* NOTES-AI (Phase 2): Notes screen ke ✨ AI button ka popup —
            Copy Prompt (external AI ke liye) + paste + Preview + Save.

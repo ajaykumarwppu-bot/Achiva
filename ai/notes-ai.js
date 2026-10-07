@@ -6,8 +6,10 @@
      1. Notes screen ka AI button → ye popup khulta hai
      2. [Copy Prompt] → 3-level prompt clipboard par :
           • universal rules (kab FINALIZE karna hai, markers)
-          • EXACT output format — wahi jo app render kar sakta hai
-            (plain text + $...$ inline / $$...$$ block KaTeX math)
+          • EXACT output format — MARKDOWN (headings/lists/tables/hr)
+            + wahi Phase-1 verified $...$/$...$ KaTeX math
+            (\ce chemistry, \text, matrices) — renderer math ko
+            markdown se PEHLE extract karta hai, isliye mix safe hai
           • current context (subject → chapter → topic + existing
             notes taaki AI duplicate na kare, aage badhaye)
      3. User kisi bhi AI (ChatGPT/Claude/Gemini/Grok) mein prompt
@@ -69,9 +71,9 @@
     P.push('');
     P.push('--- OUTPUT FORMAT (strict — the app can render ONLY this) ---');
     P.push('1. Language: write notes in the SAME language the user is using (Hinglish question → Hinglish notes).');
-    P.push('2. Plain text only: NO markdown headings (#), NO bold/italic (** or *), NO HTML tags, NO code fences inside the notes.');
-    P.push('3. Section titles: a simple short text line, content below it.');
-    P.push('4. Lists: lines starting with "- " or numbers "1. ".');
+    P.push('2. Markdown IS supported and encouraged: # / ## / ### headings, "- " bullets, "1. " numbered lists, nested lists (2-space indent), GitHub tables (| A | B | with a |---|---| separator row), "---" horizontal rules, **bold**, *italic*, > quotes, and ``` code blocks.');
+    P.push('3. Do NOT use raw HTML tags (<b>, <div>, <br> etc.) — they are NOT parsed and will show as literal text.');
+    P.push('4. A single line break stays a visible line break (breaks mode is ON) — write naturally, line by line. Use a blank line between sections.');
     P.push('5. Inline math: SINGLE dollar signs, stays on ONE line:  $E = h\\nu$');
     P.push('6. Block math: DOUBLE dollar signs on their own line, blank line above and below:');
     P.push('$$K_{max} = h\\nu - \\phi$$');
@@ -85,6 +87,7 @@
     P.push('   Matrix: \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}');
     P.push('8. A literal dollar sign in normal text must be escaped:  \\$');
     P.push('9. Keep formulas exact; numbers in decimals where natural.');
+    P.push('10. Math and Markdown mix freely: formulas can live inside headings, list items, table cells or bold lines — the app extracts all math BEFORE markdown parsing, so LaTeX never breaks.');
     P.push('');
     P.push('--- WORKFLOW ---');
     P.push('- First talk normally: explain, discuss, ask clarifying questions, use anything the user shares (PDFs, text, ideas). While discussing, do NOT use the strict format above.');
