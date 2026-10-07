@@ -47,7 +47,7 @@
   var gNote = null, gOffline = null, googleWrap = null, closedBtn = null;
   var vLogin = null, vSuEmail = null, vSuCode = null, vSuCreate = null, vGSetup = null;
   var gEmail = null, gPass = null, gMain = null, gForgot = null, gAlt = null;
-  var suEmailIn = null, sendCodeBtn = null;
+  var suEmailIn = null, sendCodeBtn = null, suNoEmail = null;
   var codeInfo = null, codeIn = null, verifyBtn = null, resendLink = null, changeLink = null;
   var suNameIn = null, suPass = null, createBtn = null, suMeter = null;
   var gSetupEmail = null, gSetupName = null, gSetupPass = null, gSetupSave = null, gSetupMeter = null;
@@ -401,6 +401,21 @@
     info1.style.cssText = 'font-size:11.5px;color:var(--ash);line-height:1.6';
     info1.textContent = 'Pehle email par ek one-time code bheja jayega (5 min valid). Code verify hone ke baad naam aur password set hoga.';
     vSuEmail.appendChild(info1);
+
+    /* FIX #1: EmailJS config na bhari ho (backend/email-config.js
+       placeholder) to ye notice dikhta hai aur code button disabled
+       rehta hai. Pehle user email bhar kar click karta, tab jakar
+       pata chalta ki service band hai — dead-end. Config bharte hi
+       ye apne aap normal flow par wapas aa jata hai. */
+    suNoEmail = document.createElement('div');
+    suNoEmail.id = 'gateNoEmail';
+    suNoEmail.style.cssText = 'display:none;margin-top:10px;padding:10px 12px;border-radius:12px;' +
+      'border:1px solid var(--s2);background:var(--mist);font-size:11.5px;line-height:1.6;color:var(--slate)';
+    suNoEmail.textContent = 'Email verification service abhi setup nahi hai — email se naya account ' +
+      'filhaal nahi ban sakta. Neeche "Sign in with Google" se account banayein, ya pehle se ' +
+      'account hai to Login tab use karein.';
+    vSuEmail.appendChild(suNoEmail);
+
     suEmailIn = field('EMAIL', 'email', 'aapka@email.com', 'suEmail').input;
     vSuEmail.appendChild(suEmailIn.parentNode);
     sendCodeBtn = document.createElement('button');
@@ -547,7 +562,23 @@
     if (vSuCreate) vSuCreate.style.display = (v === 'su-create') ? '' : 'none';
     if (vGSetup) vGSetup.style.display = (v === 'g-setup') ? '' : 'none';
     if (googleWrap) googleWrap.style.display = (v === 'login' || v === 'su-email') ? '' : 'none';
+    if (v === 'su-email') paintEmailServiceState();   /* FIX #1 */
     showError('');
+  }
+
+  /* FIX #1: EmailJS configured hai ya nahi — signup step-1 ka state.
+     Config runtime par bhari jaye (ya template se replace ho) to
+     agli baar view khulte hi button apne aap enable. */
+  function emailServiceReady() { return !!window.ACHIVA_EMAIL_CONFIG; }
+
+  function paintEmailServiceState() {
+    var ok = emailServiceReady();
+    if (suNoEmail) suNoEmail.style.display = ok ? 'none' : '';
+    if (sendCodeBtn && !busy) {
+      sendCodeBtn.disabled = !ok;
+      sendCodeBtn.style.opacity = ok ? '1' : '.55';
+      sendCodeBtn.textContent = ok ? 'Verification code bhejo' : 'Email service setup nahi hai';
+    }
   }
 
   function paintTabs() {
@@ -703,6 +734,12 @@
     if (busy) return;
     var p = provider();
     if (!p) { showError('Login abhi chalu nahi hai (Firebase config missing).'); return; }
+    /* FIX #1: service down ho to dead-end pehle hi rok do (button disabled
+       hota hai, par kisi tarah call ho gaya to bhi saaf message mile) */
+    if (!emailServiceReady()) {
+      showError('Email verification service setup nahi hai — "Sign in with Google" se account banayein.');
+      return;
+    }
     var email = (suEmailIn.value || '').trim();
     showError('');
     if (!email || email.indexOf('@') < 0) { showError('Sahi email daalein (jaise naam@gmail.com).'); return; }
@@ -941,32 +978,80 @@
   }
 
   /* ================================================================
-     SESSION FLOWS (resume / signout / offline) — unchanged
+     SESSION FLOWS (resume / signout / offline)
+     ----------------------------------------------------------------
+     FIX #2 (reload-loop): pehle fresh login par resume() bina kuch
+     bataye poora page reload kar deta tha — gate visible rehta,
+     account session save nahi hota tha, aur flush FAIL hone par bhi
+     reload ho jata tha (data-loss + "screen atak gayi" feel). Ab:
+       • session (achiva.account.v1) reload se PEHLE save hota hai
+         → reload/crash ke baad bhi offline-entry button available
+       • user ko status text dikhta hai ("Login ho raha hai…")
+       • flush fail → reload NAHI; gate par saaf Hinglish error
+       • flush hang → 2.5s baad reload (storage.js ka LS-resync
+         agle boot par miss-hue writes wapas la deta hai)
+       • firstRunFlow (backup/restore prompt) reload mein marta tha
+         → ab pending-flag se reload ke BAAD boot par chalta hai
   ================================================================ */
+  var FIRST_RUN_KEY = 'achiva.firstrun.pending.v1';
+
+  /* reload ke baad boot se call hota hai — pending flag ho to
+     firstRunFlow (backup/restore prompt) tab chalao */
+  function maybeFirstRun(u) {
+    try {
+      if (!u || lsGet(FIRST_RUN_KEY) !== u.uid) return;
+      lsDel(FIRST_RUN_KEY);
+      if (window.AchivaBackup && window.AchivaBackup.firstRunFlow) {
+        window.AchivaBackup.firstRunFlow(session());
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  /* return true = page reload SCHEDULE hua (caller firstRunFlow skip kare) */
   function resume(u) {
     user = u;
     if (window.AppStorage) {
       var prev = window.AppStorage.ns();
       window.AppStorage.setNamespace(u.uid);
       window.AppStorage.adoptLegacy();
+      /* session PEHLE record karo (pehle ye reload ke baad hota tha —
+         fresh login par account save hi nahi hota tha) */
+      lsDel(OFFLINE_KEY);
+      setAccount(u);
       if (prev !== u.uid) {
+        /* Namespace switch → feature caches purane ns ke hain → reload
+           zaroori hai (data consistency ke liye ye behaviour JAAN-BOOJH
+           kar rakha gaya hai) */
+        lsSet(FIRST_RUN_KEY, u.uid);
+        setBusyText('Login ho raha hai… app dobara khul raha hai');
         var done = false;
         var go = function () { if (!done) { done = true; window.location.reload(); } };
+        var fail = function () {
+          if (done) return;
+          done = true;
+          lsDel(FIRST_RUN_KEY);
+          setBusy(false);
+          showGate();
+          showError('Login data save nahi ho paya (storage busy). Thodi der mein dobara login karein.');
+        };
         if (window.AppStorage.flush) {
-          window.AppStorage.flush().then(go, go);
-          window.setTimeout(go, 2500);
+          Promise.resolve(window.AppStorage.flush()).then(go, fail);
+          window.setTimeout(go, 2500);   /* flush hang → safe reload */
         } else { go(); }
-        return;
+        return true;
       }
     }
     lsDel(OFFLINE_KEY);
     setAccount(u);
     hideGate();
+    return false;
   }
 
   function onSignedIn(u) {
-    resume(u);
-    if (window.AchivaBackup && window.AchivaBackup.firstRunFlow) {
+    var reloading = resume(u);
+    /* reload schedule hai to firstRunFlow abhi NAHI — modal adhoora mar
+       jata. Reload ke baad boot → maybeFirstRun() ise chalata hai. */
+    if (!reloading && window.AchivaBackup && window.AchivaBackup.firstRunFlow) {
       window.AchivaBackup.firstRunFlow(session());
     }
     signInHandlers.forEach(function (fn) { try { fn(session()); } catch (e) { /* ignore */ } });
@@ -1064,9 +1149,11 @@
       settled = true;
       setBusy(false);
       if (u && u.uid) {
-        /* naya Google user (password link nahi) → setup view, warna resume */
+        /* naya Google user (password link nahi) → setup view, warna resume.
+           FIX #2: resume ne reload NAHI kiya (session restore) → pending
+           firstRunFlow flag ho to backup/restore prompt ab chalao */
         if (needsGoogleSetup(u)) handleGoogleUser(u);
-        else resume(u);
+        else if (!resume(u)) maybeFirstRun(u);
       }
       else { user = null; showLoginUI(); }
     };
