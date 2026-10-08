@@ -77,4 +77,19 @@
         android:text="Emergency unlock (log hoga)"
         android:textColor="#9aa4b0"
         android:textSize="13sp" />
+
+    <!-- ULTRA STRICT : unlock button ki jagah ye dikhta hai — blocked app
+         band karke HOME. Lock tabhi khulega jab rule khatam / target poora
+         / Settings se rule OFF (ya app uninstall). -->
+    <Button
+        android:id="@+id/btnBack"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="#26282d"
+        android:padding="14dp"
+        android:text="← Back (app band karo)"
+        android:textColor="#9aa4b0"
+        android:textSize="13sp"
+        android:visibility="gone" />
 </LinearLayout>

@@ -7,8 +7,9 @@
    Section mein :
      1. Status       : service chalu/band, usage-access, overlay permission
      2. Rules        : list + add/edit/delete/on-off (editor sheet se)
-     3. Settings     : cooldown, strict, boot-start, lock-screen message,
-                       emergency unlock, unlock log
+     3. Settings     : strictness level (Normal/Strict/Ultra Strict),
+                       cooldown, boot-start, lock-screen message,
+                       emergency unlock (ultra mein band), unlock+mode log
    Enforcement Android par FocusService karti hai; yahan sirf authoring.
    ================================================================ */
 
@@ -186,7 +187,28 @@
   function settingsBlock(host) {
     var f = F();
     var s = f.settings();
+    var curLvl = (s.strictLevel === 'strict' || s.strictLevel === 'ultra') ? s.strictLevel : 'normal';
     var g = group('Settings');
+
+    /* ---------- STRICTNESS LEVEL (3 chips) ---------- */
+    var lvlBox = el('div');
+    lvlBox.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+    [['normal', 'Normal'], ['strict', 'Strict'], ['ultra', 'Ultra Strict']].forEach(function (L) {
+      lvlBox.appendChild(chip(L[1], curLvl === L[0], function () {
+        if (curLvl === L[0]) return;
+        if (L[0] === 'ultra') { confirmUltra(host, L[0]); return; }   /* confirm zaroori */
+        f.setStrictLevel(L[0]);
+        refresh(host);
+      }));
+    });
+    var LVL_DESC = {
+      normal: 'Emergency unlock: ek tap · cooldown ke saath · log banta hai.',
+      strict: 'Emergency unlock: <b>5 second daba ke rakho</b> · <b>2× cooldown</b> · log banta hai.',
+      ultra: '<b>Koi emergency unlock NAHI.</b> Lock par sirf [Achiva kholo] aur [Back]. ' +
+        'Nikalne ka raasta: yahan Settings mein rule OFF / mode badlo (log banta hai) ya app uninstall.'
+    };
+    g.appendChild(row('Strictness', lvlBox));
+    g.appendChild(note(LVL_DESC[curLvl]));
 
     /* cooldown */
     var cool = field('number', s.cooldownMin, { min: 0, max: 240, width: '76px' });
@@ -198,19 +220,13 @@
       f.setSettings({ cooldownMin: v });
       refresh(host);
     });
-    g.appendChild(row('Emergency unlock cooldown (min)', cool));
-
-    /* strict */
-    g.appendChild(row('Strict mode <span style="font-size:10.5px">(unlock par 2x cooldown + pakka log)</span>',
-      toggle(!!s.strict, function () {
-        var cur = f.settings();
-        var base = cur.strict ? Math.round(cur.cooldownMin / 2) : cur.cooldownMin;
-        f.setSettings({
-          strict: !cur.strict,
-          cooldownMin: cur.strict ? base : base * 2
-        });
-        refresh(host);
-      })));
+    if (curLvl === 'ultra') { cool.disabled = true; cool.style.opacity = '.5'; }
+    var coolLabel = 'Emergency unlock cooldown (min)' +
+      (curLvl === 'strict'
+        ? ' <span style="font-size:10.5px">(strict: asli 2× = ' + ((s.cooldownMin || 0) * 2) + ' min)</span>'
+        : (curLvl === 'ultra'
+          ? ' <span style="font-size:10.5px">(ultra mein lagu nahi — unlock hi nahi)</span>' : ''));
+    g.appendChild(row(coolLabel, cool));
 
     /* boot start */
     g.appendChild(row('Reboot ke baad service khud chalu', toggle(s.bootStart !== false, function () {
@@ -225,22 +241,51 @@
 
     /* emergency unlock + log */
     var lg = f.log();
-    var last = lg.length ? lg[lg.length - 1] : null;
+    var last = null;
+    for (var li = lg.length - 1; li >= 0; li--) { if (lg[li].type === 'unlock') { last = lg[li]; break; } }
     var ubar = el('div');
     ubar.style.cssText = 'display:flex;gap:6px';
-    ubar.appendChild(pill('Abhi unlock', function () {
+    var ultraOn = curLvl === 'ultra';
+    var unlockPill = pill(ultraOn ? 'Abhi unlock (Ultra mein band)' : 'Abhi unlock', function () {
+      if (f.strictLevel() === 'ultra') return;      /* store-level guard bhi hai */
       f.unlock(f.settings().cooldownMin);
       refresh(host);
-    }, f.hasNative()));
+    }, f.hasNative() && !ultraOn);
+    if (ultraOn) {
+      unlockPill.disabled = true;
+      unlockPill.style.opacity = '.45';
+      unlockPill.style.cursor = 'not-allowed';
+    }
+    ubar.appendChild(unlockPill);
     ubar.appendChild(pill('Log (' + lg.length + ')', function () { openLog(); }));
     g.appendChild(row('Emergency unlock<br><span style="font-size:10.5px">' +
       (last ? 'aakhri: ' + new Date(last.at).toLocaleString() : 'koi attempt nahi') +
       '</span>', ubar));
 
     g.appendChild(note('<b style="color:var(--ink)">Sach baat:</b> Android normal apps ko ' +
-      'dusri apps ko poora "kill" karne ka API nahi deta. Phase 1 ek <b>mazboot soft-lock</b> hai — ' +
-      'full-screen lock + home-push + unlock log. Poora hard-block Phase 2 (Shizuku/ADB) se aayega.'));
+      'dusri apps ko poora "kill" karne ka API nahi deta. Ye ek <b>mazboot soft-lock</b> hai — ' +
+      'full-screen lock + home-push + unlock log, teen levels tak (Ultra Strict = bina unlock ' +
+      'wala lock). Poora hard-block Phase 2 (Shizuku/ADB) se aa sakta hai.'));
     return g;
+  }
+
+  /* Ultra Strict select par CONFIRM modal — galti se chun-ne par lock mein
+     phasne ka darr hai, isliye ek baar saaf-saaf bata kar poochte hain */
+  function confirmUltra(host, lvl) {
+    var U2 = U(), f = F();
+    if (!U2 || !U2.modal) { f.setStrictLevel(lvl); refresh(host); return; }
+    var m = U2.modal({ zScrim: 85, zWrap: 86, saveLabel: 'Haan, Ultra Strict' });
+    m.open('Ultra Strict chalu karein?', function (body) {
+      body.appendChild(note('<b style="color:var(--ink)">Emergency unlock BAND ho jayega.</b> ' +
+        'Blocked app ka lock sirf tab khulega jab rule ka time khatam ho, study target poora ho, ' +
+        'ya aap jaan-boojh kar Settings mein rule OFF / mode change karo (log banta hai).'));
+      body.appendChild(note('Lock screen par sirf do button rahenge: ' +
+        '<b>Achiva kholo</b> aur <b>Back (app band karo)</b>.'));
+    }, function () {
+      f.setStrictLevel(lvl);
+      m.close();
+      refresh(host);
+    });
   }
 
   /* ---------- rule editor ---------- */
@@ -446,8 +491,11 @@
       lg.slice().reverse().forEach(function (e) {
         var r2 = el('div');
         r2.style.cssText = 'padding:8px 0;border-bottom:1px dashed var(--s2);font-size:11.5px;color:var(--slate)';
+        var what = (e.type === 'mode')
+          ? 'mode badla: <b style="color:var(--ink)">' + String(e.from || '?') + ' → ' + String(e.to || '?') + '</b>'
+          : 'unlock ' + (e.min || 0) + ' min';
         r2.innerHTML = '<b style="color:var(--ink)">' + new Date(e.at).toLocaleString() + '</b>' +
-          ' &nbsp;·&nbsp; unlock ' + (e.min || 0) + ' min';
+          ' &nbsp;·&nbsp; ' + what;
         wrap.appendChild(r2);
       });
       body.appendChild(wrap);

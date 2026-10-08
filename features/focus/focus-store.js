@@ -8,8 +8,9 @@
    Storage : 'achiva.focus.v1' = { rules:[], settings:{}, log:[] }
      rules    : [{id,name,apps[],mode:'time'|'target'|'timer',
                   days[],start,end,timerMin,active}]
-     settings : {cooldownMin, strict, bootStart, overlayText}
-     log      : web-side copy of unlock attempts (native state se sync)
+     settings : {cooldownMin, strictLevel:'normal'|'strict'|'ultra',
+                 bootStart, overlayText}
+     log      : unlock attempts + mode changes (native state se sync)
 
    Native mirror : FocusRules.kt (same semantics). JS evaluateRule()
    sirf UI-preview ke liye hai (asal enforcement native karti hai).
@@ -32,7 +33,14 @@
       rules: [],
       settings: {
         cooldownMin: 5,
-        strict: false,
+        /* STRICT-LEVELS (3-tier) :
+           'normal' = emergency unlock ek tap par (cooldown + log)
+           'strict' = unlock sirf 5-sec LONG-PRESS par + 2× cooldown + log
+           'ultra'  = emergency unlock NAHI (overlay par sirf [Achiva kholo]
+                      aur [Back]; settings ka "Abhi unlock" bhi disabled) —
+                      nikalne ka raasta sirf rule OFF / mode change (logged)
+                      ya app uninstall */
+        strictLevel: 'normal',
         bootStart: true,
         overlayText: ''
       },
@@ -46,6 +54,21 @@
     if (!Array.isArray(d.rules)) d.rules = [];
     if (!d.settings || typeof d.settings !== 'object') d.settings = def().settings;
     if (!Array.isArray(d.log)) d.log = [];
+    /* MIGRATION: purana strict:boolean → strictLevel (3-level system).
+       Purana strict-toggle cooldownMin ko DOUBLE store karta tha — base
+       wapas laao (2× ab native 'strict' level khud lagata hai, isliye
+       effective cooldown pehle jaisa hi rehta hai). */
+    var s = d.settings;
+    if (s.strictLevel !== 'normal' && s.strictLevel !== 'strict' && s.strictLevel !== 'ultra') {
+      if (s.strict === true) {
+        s.strictLevel = 'strict';
+        s.cooldownMin = Math.max(1, Math.round((s.cooldownMin || 10) / 2));
+      } else {
+        s.strictLevel = 'normal';
+      }
+      delete s.strict;
+      try { window.AppStorage.saveAt(KEY, d); } catch (e) { /* ignore */ }
+    }
     return d;
   }
   function save(d) {
@@ -200,12 +223,32 @@
     } catch (e) { return []; }
   }
   function unlock(minutes) {
+    /* ULTRA STRICT : emergency unlock exist hi nahi karta — settings ka
+       "Abhi unlock" pill bhi disabled hai, ye guard uska backup hai. */
+    if (settings().strictLevel === 'ultra') return false;
     var n = native();
     if (n && n.focusUnlock) n.focusUnlock(minutes || settings().cooldownMin || 5);
     var d = load();
     d.log.push({ at: Date.now(), type: 'unlock', min: minutes || settings().cooldownMin || 5 });
     if (d.log.length > 100) d.log = d.log.slice(-100);
     save(d);
+    return true;
+  }
+  function strictLevel() {
+    var l = settings().strictLevel;
+    return (l === 'strict' || l === 'ultra') ? l : 'normal';
+  }
+  function setStrictLevel(level) {
+    var from = strictLevel();
+    var to = (level === 'strict' || level === 'ultra') ? level : 'normal';
+    if (from === to) return false;
+    setSettings({ strictLevel: to });
+    /* mode-change ka AUDIT LOG — ultra se nikalna bhi record hota hai */
+    var d = load();
+    d.log.push({ at: Date.now(), type: 'mode', from: from, to: to });
+    if (d.log.length > 100) d.log = d.log.slice(-100);
+    save(d);
+    return true;
   }
   function log() { return load().log; }
 
@@ -262,6 +305,7 @@
     syncAll: syncAll, pushState: pushState,
     permissions: permissions, running: running, start: start, stop: stop,
     listApps: listApps, unlock: unlock, log: log,
+    strictLevel: strictLevel, setStrictLevel: setStrictLevel,
     hasNative: hasNative, toMin: toMin
   };
 })();
