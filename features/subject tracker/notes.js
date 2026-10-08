@@ -26,6 +26,11 @@
                        typeset hote hain (ai/math-render.js +
                        vendor/katex). Rendered formula par TAP →
                        LaTeX editor modal (live preview + cheatsheet).
+     • PREV / NEXT   : Write/Read chips ke parallel (right end) —
+                       topic list ke EXACT order (DFS) mein pichla/
+                       agla note isi screen par; end par WRAP. View
+                       mode preserve rehta hai, pending save pehle
+                       flush hota hai (kuch lost nahi).
      • Data          : node.notes (text) + node.notesTitle (string) —
                        chapter.topics ke saath main state mein persist
                        (AppStorage) + Firebase backup. Purana data
@@ -52,6 +57,9 @@
   /* view toggle : Write (pencil) / Read (eye) */
   var ICON_WRITE = UI.icons.edit;
   var ICON_READ = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  /* Prev/Next navigation (topic list ke order mein) */
+  var ICON_PREV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+  var ICON_NEXT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
 
   var SAVE_DEBOUNCE = 350;   /* ms — type karte hi auto-save */
 
@@ -61,6 +69,7 @@
   var titleInput = null, ta = null;
   var body = null, readWrap = null, readBody = null;
   var writeBtn = null, readBtn = null;
+  var prevBtn = null, nextBtn = null, navSpacer = null;
   var viewMode = 'write';
   var saveTimer = null;
   var touched = false;       /* user ne textarea mein type kiya */
@@ -157,6 +166,24 @@
     readBtn.addEventListener('click', function () { setView('read'); });
     viewRow.appendChild(writeBtn);
     viewRow.appendChild(readBtn);
+
+    /* ---------- PREV / NEXT : Write/Read chips ke parallel (right end) ----------
+       Topic list ke EXACT order mein pichla/agla note isi screen par kholta hai
+       (back-jaakar-card-kholne ki zaroorat nahi). Order topic.js ka flatOrder()
+       (DFS — jaise list dikhti hai); end par WRAP (last→first, first→last).
+       Sirf tab dikhte hain jab opener ne opts.navigate diya ho; ek hi node ho
+       to disabled. Switch se pehle current notes ka pending save flush hota
+       hai (open() ka existing pattern) — kuch lost nahi hota. */
+    navSpacer = el('div');
+    navSpacer.style.cssText = 'flex:1';
+    viewRow.appendChild(navSpacer);
+    prevBtn = viewChip(ICON_PREV, 'Prev');
+    nextBtn = viewChip(ICON_NEXT, 'Next');
+    prevBtn.addEventListener('click', function () { gotoSibling(-1); });
+    nextBtn.addEventListener('click', function () { gotoSibling(+1); });
+    viewRow.appendChild(prevBtn);
+    viewRow.appendChild(nextBtn);
+
     screen.appendChild(viewRow);
 
     /* ---------- WRITE view : full-height textarea (auto-save) ---------- */
@@ -238,6 +265,37 @@
       readBody.innerHTML = '';
       readBody.appendChild(el('div', 'nr-empty', 'Read view render nahi ho paya.'));
     }
+  }
+
+  /* ================================================================
+     PREV / NEXT NAVIGATION (topic list ke order mein, wrap ke saath)
+  ================================================================ */
+  function paintNavState() {
+    var hasNav = !!(current && current.opts && current.opts.navigate);
+    if (navSpacer) navSpacer.style.display = hasNav ? '' : 'none';
+    if (prevBtn) prevBtn.style.display = hasNav ? '' : 'none';
+    if (nextBtn) nextBtn.style.display = hasNav ? '' : 'none';
+    if (!hasNav) return;
+    /* single node → wrap par wahi node wapas aata hai → disabled */
+    var single = true;
+    try {
+      var nx = current.opts.navigate(current.node, 1);
+      single = !nx || nx === current.node || nx.id === current.node.id;
+    } catch (e) { single = true; }
+    if (prevBtn) { prevBtn.disabled = single; prevBtn.style.opacity = single ? '.45' : '1'; }
+    if (nextBtn) { nextBtn.disabled = single; nextBtn.style.opacity = single ? '.45' : '1'; }
+  }
+
+  function gotoSibling(delta) {
+    if (!current || !current.opts || !current.opts.navigate) return;
+    if (prevBtn && prevBtn.disabled) return;
+    var target = null;
+    try { target = current.opts.navigate(current.node, delta); } catch (e) { target = null; }
+    if (!target || target === current.node || target.id === current.node.id) return;
+    var keep = viewMode;              /* Read→Read, Write→Write (user ka flow na toote) */
+    var opts = current.opts;
+    open(target, opts);               /* open() purane node ka pending save PEHLE flush karta hai */
+    setView(keep);
   }
 
   /* ================================================================
@@ -433,6 +491,7 @@
     ta.value = node.notes || '';
     ta.scrollTop = 0;
     setView('write');                /* har open Write tab se shuru */
+    paintNavState();                 /* Prev/Next : nav mila? single node? */
 
     /* jahan se khola, wahi yaad rakho — back par wahi wapas */
     var act = document.querySelector('section.screen.active');

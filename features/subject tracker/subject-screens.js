@@ -95,8 +95,12 @@
     activeScreen = next;
     /* FAB (floating menu button) sirf main screens par dikhe :
        subjects / chapters / books / features — lekin chapter-view
-       (basics/topic/sources/revision) ke andar CHHUPA rahe */
-    if (window.AchivaFab) window.AchivaFab.setVisible(next !== chapterViewScreen);
+       (basics/topic/sources/revision) aur NOTES screen ke andar
+       CHHUPA rahe (notes padhte waqt floating button disturb na kare) */
+    if (window.AchivaFab) {
+      window.AchivaFab.setVisible(next !== chapterViewScreen &&
+        !(next && next.id === 'screen-topic-notes'));
+    }
   }
 
   /* ---------- 1) SUBJECT SCREEN ---------- */

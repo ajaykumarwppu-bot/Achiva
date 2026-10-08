@@ -143,13 +143,46 @@
               (n.notesTitle && String(n.notesTitle).trim()));
   }
 
+  /* Topic tree ki FLAT DFS order — bilkul wahi jo screen par dikhti hai
+     (drawRows: node → uske children → agla sibling). Notes ke Prev/Next
+     ke liye. Har call par FRESH banti hai — add/delete/reorder/drag ke
+     baad order apne aap sahi rehta hai. */
+  function flatOrder() {
+    var out = [];
+    (function walk(nodes) {
+      (nodes || []).forEach(function (x) {
+        ensureNode(x);
+        out.push(x);
+        walk(x.children);
+      });
+    })(chapter ? chapter.topics : []);
+    return out;
+  }
+
+  /* fromNode se delta (+1 = Next, -1 = Prev) door ka node — list ke end
+     par WRAP: last par Next → first, first par Prev → last. */
+  function navigateNode(fromNode, delta) {
+    var list = flatOrder();
+    if (!list.length || !fromNode) return null;
+    var i = -1;
+    for (var k = 0; k < list.length; k++) {
+      if (list[k].id === fromNode.id) { i = k; break; }
+    }
+    if (i === -1) return null;               /* node delete ho chuka */
+    return list[(i + delta + list.length) % list.length];
+  }
+
   /* NOTES screen kholo (notes.js) — card ke middle click se.
      persist = commit (poora state save), onSaved = rerender
-     (indicator turant refresh). */
+     (indicator turant refresh), navigate = Prev/Next ke liye. */
   function openNotes(n) {
     try {
       if (window.Notes && window.Notes.open) {
-        window.Notes.open(n, { persist: commit, onSaved: rerender });
+        window.Notes.open(n, {
+          persist: commit,
+          onSaved: rerender,
+          navigate: navigateNode
+        });
       }
     } catch (e) { }
   }
