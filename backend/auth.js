@@ -4,25 +4,33 @@
    • App khulte hi #authGate dikha kar poora app dhak dena
      (z-index 400 — header 35, FAB 55, modals 95 se upar).
    • LOGIN : email + password (existing users, server-verified).
-   • NAYA ACCOUNT (3-step ownership-proof signup):
-       1) email  → client syntax + **backend check**
-          (fetchSignInMethodsForEmail — registered email reject)
-       2) us email par **one-time 6-digit code** jaata hai
-          (EmailJS REST via backend/email-config.js) — 5 min valid,
-          max 5 galat tries, resend 45s cooldown; verify hone par
-          code turant invalidate (one-time).
-       3) naam + password (min 8 chars, strength meter, eye toggle)
-          → account create + displayName set.
+     Unverified email se login BLOCK hai — pehle email verify karo.
+   • NAYA ACCOUNT (2-step Firebase native verification):
+       1) email + naam + password (min 8 chars, strength meter)
+          → createUserWithEmailAndPassword + displayName set
+          + sendEmailVerification() → su-verify view.
+       2) user email ka link click kare → "Maine verify kar liya"
+          → reload() → emailVerified==true to entry.
+     Koi custom OTP / EmailJS NAHI — sab Firebase server-side.
    • SIGN IN WITH GOOGLE : popup → Google verify → agar pehli baar
      hai to naam + password (min 8, meter, eye) set karwao aur
      password credential LINK karo (taaki email+pass se bhi login
      ho sake); existing Google user seedha andar.
+     (Google emails pehle se verified maani jaati hain.)
    • Firebase auth ka session yaad rakhna:
        achiva.account.v1 → {uid, email, at}
        achiva.offline.v1 → '1'  (offline mode chalu hai)
    • Net na ho + purana session ho → "Bina internet chalu rakhein".
    • Login ke baad backup.js ka firstRunFlow() (kabhi auto nahi).
    • Auth ki har Firebase galti ka Hinglish message.
+
+   SECURITY (2026-10 fix):
+     • EmailJS OTP hata diya — su.code console se padha ja sakta tha.
+     • Test backdoor (__ACHIVA_TEST_PROVIDER / setTestProvider /
+       _internal) hata diya — gate bypass hota tha.
+     • Email enumeration (fetchSignInMethodsForEmail) hata diya —
+       ab sirf auth/email-already-in-use error se uniform message.
+     • Unverified users Firestore rules + client dono par blocked.
 
    UI note: CSS files FROZEN hain, isliye gate ka poora design
    inline styles se bana hai (koi naya CSS rule nahi).
@@ -36,33 +44,28 @@
   var ACCOUNT_KEY = 'achiva.account.v1';
   var OFFLINE_KEY = 'achiva.offline.v1';
 
-  /* one-time code rules */
-  var CODE_TTL = 5 * 60 * 1000;        /* 5 min */
-  var RESEND_MS = 45 * 1000;           /* 45s cooldown */
-  var MAX_ATTEMPTS = 5;
+  /* Firebase native verification — koi client-side OTP state nahi. */
   var MIN_PASS = 8;                    /* naye accounts ke liye */
 
   var gate = null;
   var gTitle = null, gSub = null, gTabs = null, gErr = null;
   var gNote = null, gOffline = null, googleWrap = null, closedBtn = null;
-  var vLogin = null, vSuEmail = null, vSuCode = null, vSuCreate = null, vGSetup = null;
+  var vLogin = null, vSuForm = null, vSuVerify = null, vGSetup = null;
   var gEmail = null, gPass = null, gMain = null, gForgot = null, gAlt = null;
-  var suEmailIn = null, sendCodeBtn = null, suNoEmail = null;
-  var codeInfo = null, codeIn = null, verifyBtn = null, resendLink = null, changeLink = null;
-  var suNameIn = null, suPass = null, createBtn = null, suMeter = null;
+  var suEmailIn = null, suNameIn = null, suPass = null, createBtn = null, suMeter = null;
+  var verifyInfo = null, verifyEmailLbl = null, verifyDoneBtn = null, resendLink = null, changeLink = null;
   var gSetupEmail = null, gSetupName = null, gSetupPass = null, gSetupSave = null, gSetupMeter = null;
   var googleBtn = null;
 
   var mode = 'login';            /* login | sign */
-  var view = 'login';            /* login | su-email | su-code | su-create | g-setup */
+  var view = 'login';            /* login | su-form | su-verify | g-setup */
   var busy = false;
   var bootDone = false;
   var user = null;
-  var testProvider = null;
   var resendTimer = null;
 
-  /* signup flow state (one-time code) */
-  var su = { email: '', code: null, exp: 0, attempts: 0, resendAt: 0 };
+  /* signup flow state — sirf email yaad rakhte hain, koi secret nahi */
+  var su = { email: '' };
   var googleUser = null;
 
   var signInHandlers = [];
@@ -80,10 +83,10 @@
       onAuth: function (cb) { return fa.onAuthStateChanged(cb, function () { cb(null); }); },
       signIn: function (email, pass) { return fa.signInWithEmailAndPassword(email, pass); },
       signUp: function (email, pass) { return fa.createUserWithEmailAndPassword(email, pass); },
+      sendVerification: function (u) { return u.sendEmailVerification(); },
+      reloadUser: function (u) { return u.reload().then(function () { return fa.currentUser; }); },
       reset: function (email) { return fa.sendPasswordResetEmail(email); },
       signOut: function () { return fa.signOut(); },
-      /* backend email-existence check (signup step 1) */
-      checkEmail: function (email) { return fa.fetchSignInMethodsForEmail(email); },
       /* Google OAuth popup */
       signInGoogle: function () {
         var pr = new window.firebase.auth.GoogleAuthProvider();
@@ -99,13 +102,12 @@
     };
   }
 
+  /* PRODUCTION provider — koi test override nahi (gate bypass rokne ke liye). */
   function provider() {
-    return testProvider || window.__ACHIVA_TEST_PROVIDER ||
-      (window.firebase && window.firebase.auth ? realProvider() : null);
+    return (window.firebase && window.firebase.auth ? realProvider() : null);
   }
 
   function authAvailable() {
-    if (testProvider || window.__ACHIVA_TEST_PROVIDER) return true;
     return !!(window.firebase && window.firebase.auth && window.ACHIVA_FIREBASE_CONFIG);
   }
 
@@ -158,7 +160,7 @@
       'auth/user-not-found': 'Is email se koi account nahi mila. Pehle "Naya account" banayein.',
       'auth/wrong-password': 'Password galat hai. Dobara koshish karein.',
       'auth/invalid-credential': 'Email ya password galat hai.',
-      'auth/email-already-in-use': 'Ye email pehle se registered hai. "Login" se andar aayein.',
+      'auth/email-already-in-use': 'Is email par account ho sakta hai — Login tab se sign in karein ya "Password bhool gaye?" use karein.',
       'auth/credential-already-in-use': 'Is email par pehle se password login juda hai — Login try karein.',
       'auth/weak-password': 'Password kam se kam ' + MIN_PASS + ' characters ka hona chahiye.',
       'auth/too-many-requests': 'Bahut baar galat koshish hui. Thodi der baad dobara karein.',
@@ -395,93 +397,68 @@
     vLogin.appendChild(gAlt);
     card.appendChild(vLogin);
 
-    /* ---------- VIEW : SIGNUP step 1 (email) ---------- */
-    vSuEmail = document.createElement('div');
+    /* ---------- VIEW : SIGNUP form (email + naam + password ek saath) ---------- */
+    vSuForm = document.createElement('div');
     var info1 = document.createElement('div');
     info1.style.cssText = 'font-size:11.5px;color:var(--ash);line-height:1.6';
-    info1.textContent = 'Pehle email par ek one-time code bheja jayega (5 min valid). Code verify hone ke baad naam aur password set hoga.';
-    vSuEmail.appendChild(info1);
-
-    /* FIX #1: EmailJS config na bhari ho (backend/email-config.js
-       placeholder) to ye notice dikhta hai aur code button disabled
-       rehta hai. Pehle user email bhar kar click karta, tab jakar
-       pata chalta ki service band hai — dead-end. Config bharte hi
-       ye apne aap normal flow par wapas aa jata hai. */
-    suNoEmail = document.createElement('div');
-    suNoEmail.id = 'gateNoEmail';
-    suNoEmail.style.cssText = 'display:none;margin-top:10px;padding:10px 12px;border-radius:12px;' +
-      'border:1px solid var(--s2);background:var(--mist);font-size:11.5px;line-height:1.6;color:var(--slate)';
-    suNoEmail.textContent = 'Email verification service abhi setup nahi hai — email se naya account ' +
-      'filhaal nahi ban sakta. Neeche "Sign in with Google" se account banayein, ya pehle se ' +
-      'account hai to Login tab use karein.';
-    vSuEmail.appendChild(suNoEmail);
+    info1.textContent = 'Email + naam + password se account banega. Phir email par verification link jayega — link click karke wapas aayein.';
+    vSuForm.appendChild(info1);
 
     suEmailIn = field('EMAIL', 'email', 'aapka@email.com', 'suEmail').input;
-    vSuEmail.appendChild(suEmailIn.parentNode);
-    sendCodeBtn = document.createElement('button');
-    sendCodeBtn.type = 'button';
-    sendCodeBtn.style.cssText = SOLID_CSS();
-    sendCodeBtn.textContent = 'Verification code bhejo';
-    sendCodeBtn.addEventListener('click', sendCodeFlow);
-    vSuEmail.appendChild(sendCodeBtn);
+    vSuForm.appendChild(suEmailIn.parentNode);
+    suNameIn = field('AAPKA NAAM', 'text', 'e.g. Rahul Sharma', 'suName').input;
+    vSuForm.appendChild(suNameIn.parentNode);
+    suPass = passwordField('PASSWORD (min 8 characters)', 'naya password (min 8)', true);
+    suMeter = suPass.meter;
+    vSuForm.appendChild(suPass.wrap);
+    createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.style.cssText = SOLID_CSS();
+    createBtn.textContent = 'Account banayein + verification bhejo';
+    createBtn.addEventListener('click', signupWithVerification);
+    vSuForm.appendChild(createBtn);
     var altBack1 = document.createElement('button');
     altBack1.type = 'button';
     altBack1.style.cssText = LINK_CSS();
     altBack1.textContent = 'Pehle se account hai? Login karein';
     altBack1.addEventListener('click', function () { setMode('login'); });
-    vSuEmail.appendChild(altBack1);
-    card.appendChild(vSuEmail);
+    vSuForm.appendChild(altBack1);
+    card.appendChild(vSuForm);
 
-    /* ---------- VIEW : SIGNUP step 2 (code) ---------- */
-    vSuCode = document.createElement('div');
-    codeInfo = document.createElement('div');
-    codeInfo.style.cssText = 'font-size:11.5px;color:var(--ink2);line-height:1.6';
-    vSuCode.appendChild(codeInfo);
-    var codeF = field('VERIFICATION CODE', 'text', '6-digit code', 'suCode');
-    codeIn = codeF.input;
-    codeIn.style.cssText = INPUT_CSS() + ';font-family:var(--f-mono);letter-spacing:.3em;text-align:center';
-    vSuCode.appendChild(codeF.wrap);
-    verifyBtn = document.createElement('button');
-    verifyBtn.type = 'button';
-    verifyBtn.style.cssText = SOLID_CSS();
-    verifyBtn.textContent = 'Code verify karo';
-    verifyBtn.addEventListener('click', verifyCodeFlow);
-    vSuCode.appendChild(verifyBtn);
+    /* ---------- VIEW : SIGNUP verify (Firebase email link) ---------- */
+    vSuVerify = document.createElement('div');
+    verifyInfo = document.createElement('div');
+    verifyInfo.style.cssText = 'font-size:11.5px;color:var(--ink2);line-height:1.6';
+    vSuVerify.appendChild(verifyInfo);
+    verifyEmailLbl = document.createElement('div');
+    verifyEmailLbl.style.cssText = 'font-size:12px;font-weight:700;color:var(--ink2);word-break:break-all';
+    vSuVerify.appendChild(verifyEmailLbl);
+    var spamNote = document.createElement('div');
+    spamNote.style.cssText = 'font-size:11px;color:var(--ash);line-height:1.6';
+    spamNote.textContent = 'Inbox me na mile to Spam / Promotions folder dekhein. Link ek baar click karna hai.';
+    vSuVerify.appendChild(spamNote);
+    verifyDoneBtn = document.createElement('button');
+    verifyDoneBtn.type = 'button';
+    verifyDoneBtn.style.cssText = SOLID_CSS();
+    verifyDoneBtn.textContent = 'Maine verify kar liya — andar jaayein';
+    verifyDoneBtn.addEventListener('click', checkFreshVerification);
+    vSuVerify.appendChild(verifyDoneBtn);
     var linkRow = document.createElement('div');
     linkRow.style.cssText = 'display:flex;justify-content:space-between;gap:8px';
     resendLink = document.createElement('button');
     resendLink.type = 'button';
     resendLink.style.cssText = LINK_CSS();
     resendLink.textContent = 'Dobara bhejein';
-    resendLink.addEventListener('click', sendCodeFlow);
+    resendLink.addEventListener('click', resendVerification);
     changeLink = document.createElement('button');
     changeLink.type = 'button';
     changeLink.style.cssText = LINK_CSS();
     changeLink.textContent = 'Email badlein';
-    changeLink.addEventListener('click', function () { resetSignup(); showView('su-email'); });
+    changeLink.addEventListener('click', function () { resetSignup(); showView('su-form'); });
     linkRow.appendChild(resendLink);
     linkRow.appendChild(changeLink);
-    vSuCode.appendChild(linkRow);
-    card.appendChild(vSuCode);
-
-    /* ---------- VIEW : SIGNUP step 3 (name + password) ---------- */
-    vSuCreate = document.createElement('div');
-    var okInfo = document.createElement('div');
-    okInfo.style.cssText = 'font-size:11.5px;color:#2ea043;line-height:1.6';
-    okInfo.textContent = '✔ Email verify ho gaya. Ab apna naam aur account password set karein.';
-    vSuCreate.appendChild(okInfo);
-    suNameIn = field('AAPKA NAAM', 'text', 'e.g. Rahul Sharma', 'suName').input;
-    vSuCreate.appendChild(suNameIn.parentNode);
-    suPass = passwordField('PASSWORD (min 8 characters)', 'naya password', true);
-    suMeter = suPass.meter;
-    vSuCreate.appendChild(suPass.wrap);
-    createBtn = document.createElement('button');
-    createBtn.type = 'button';
-    createBtn.style.cssText = SOLID_CSS();
-    createBtn.textContent = 'Account banayein';
-    createBtn.addEventListener('click', createAccountFlow);
-    vSuCreate.appendChild(createBtn);
-    card.appendChild(vSuCreate);
+    vSuVerify.appendChild(linkRow);
+    card.appendChild(vSuVerify);
 
     /* ---------- VIEW : GOOGLE setup (name + password) ---------- */
     vGSetup = document.createElement('div');
@@ -557,28 +534,11 @@
   function showView(v) {
     view = v;
     if (vLogin) vLogin.style.display = (v === 'login') ? '' : 'none';
-    if (vSuEmail) vSuEmail.style.display = (v === 'su-email') ? '' : 'none';
-    if (vSuCode) vSuCode.style.display = (v === 'su-code') ? '' : 'none';
-    if (vSuCreate) vSuCreate.style.display = (v === 'su-create') ? '' : 'none';
+    if (vSuForm) vSuForm.style.display = (v === 'su-form') ? '' : 'none';
+    if (vSuVerify) vSuVerify.style.display = (v === 'su-verify') ? '' : 'none';
     if (vGSetup) vGSetup.style.display = (v === 'g-setup') ? '' : 'none';
-    if (googleWrap) googleWrap.style.display = (v === 'login' || v === 'su-email') ? '' : 'none';
-    if (v === 'su-email') paintEmailServiceState();   /* FIX #1 */
+    if (googleWrap) googleWrap.style.display = (v === 'login' || v === 'su-form') ? '' : 'none';
     showError('');
-  }
-
-  /* FIX #1: EmailJS configured hai ya nahi — signup step-1 ka state.
-     Config runtime par bhari jaye (ya template se replace ho) to
-     agli baar view khulte hi button apne aap enable. */
-  function emailServiceReady() { return !!window.ACHIVA_EMAIL_CONFIG; }
-
-  function paintEmailServiceState() {
-    var ok = emailServiceReady();
-    if (suNoEmail) suNoEmail.style.display = ok ? 'none' : '';
-    if (sendCodeBtn && !busy) {
-      sendCodeBtn.disabled = !ok;
-      sendCodeBtn.style.opacity = ok ? '1' : '.55';
-      sendCodeBtn.textContent = ok ? 'Verification code bhejo' : 'Email service setup nahi hai';
-    }
   }
 
   function paintTabs() {
@@ -594,9 +554,8 @@
   }
 
   function resetSignup() {
-    su.email = ''; su.code = null; su.exp = 0; su.attempts = 0; su.resendAt = 0;
+    su.email = '';
     if (resendTimer) { window.clearInterval(resendTimer); resendTimer = null; }
-    if (codeIn) codeIn.value = '';
   }
 
   function setMode(m) {
@@ -607,8 +566,8 @@
     if (mode === 'sign') {
       resetSignup();
       gTitle.textContent = 'Account banayein';
-      gSub.textContent = 'Step 1/3 — email verify karein';
-      showView('su-email');
+      gSub.textContent = 'Step 1/2 — details bharein, phir email verify karein';
+      showView('su-form');
     } else {
       gTitle.textContent = 'Welcome back';
       gSub.textContent = 'Apne account se login karein';
@@ -625,7 +584,7 @@
 
   function setBusy(on, label) {
     busy = !!on;
-    var btns = [gMain, sendCodeBtn, verifyBtn, createBtn, gSetupSave, googleBtn];
+    var btns = [gMain, createBtn, verifyDoneBtn, gSetupSave, googleBtn];
     btns.forEach(function (b) {
       if (!b) return;
       b.disabled = busy;
@@ -665,178 +624,100 @@
   }
 
   /* ================================================================
-     ONE-TIME CODE (EmailJS REST)
+     SIGNUP — Firebase native email verification (koi OTP nahi)
   ================================================================ */
-  function genCode() {
-    try {
-      if (window.crypto && window.crypto.getRandomValues) {
-        var a = new Uint32Array(1);
-        window.crypto.getRandomValues(a);
-        return String(100000 + (a[0] % 900000));
-      }
-    } catch (e) { /* ignore */ }
-    return String(100000 + Math.floor(Math.random() * 900000));
+  function isVerifiedUser(u) {
+    return !!u && !!u.uid && (u.emailVerified === true || hasGoogleCred(u));
   }
 
-  function sendCodeEmail(email, code) {
-    var cfg = window.ACHIVA_EMAIL_CONFIG;
-    if (!cfg) {
-      return Promise.resolve({
-        ok: false,
-        message: 'Email verification service setup nahi hai (backend/email-config.js fill karein). ' +
-          'Filhaal "Sign in with Google" se account bana sakte hain.'
-      });
-    }
-    if (!window.fetch) return Promise.resolve({ ok: false, message: 'Is browser mein email send support nahi hai.' });
-    var body = {
-      service_id: cfg.serviceId,
-      template_id: cfg.templateId,
-      user_id: cfg.publicKey,
-      template_params: { to_email: email, code: code, app_name: 'Achiva' }
-    };
-    return window.fetch('https://api.emailjs.com/api/v1.0/email/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      if (r.ok) return { ok: true };
-      return r.json().catch(function () { return null; }).then(function (j) {
-        return { ok: false, message: 'Code email nahi bheja ja saka: ' + ((j && j.text) ? j.text : ('HTTP ' + r.status)) };
-      });
-    }).catch(function () {
-      return { ok: false, message: 'Code email nahi bheja ja saka — internet check karein.' };
-    });
+  function showVerifyView(email) {
+    su.email = email || su.email || '';
+    if (verifyInfo) verifyInfo.textContent = 'Verification link bheja gaya. Email kholkar link par click karein, phir neeche button dabayein.';
+    if (verifyEmailLbl) verifyEmailLbl.textContent = su.email;
+    if (gTitle) gTitle.textContent = 'Email verify karein';
+    if (gSub) gSub.textContent = 'Step 2/2 — email ka link click karein';
+    showView('su-verify');
   }
 
-  function startResendCountdown() {
-    if (resendTimer) window.clearInterval(resendTimer);
-    function paint() {
-      var left = Math.max(0, Math.ceil((su.resendAt - Date.now()) / 1000));
-      if (!resendLink) return;
-      if (left > 0) {
-        resendLink.disabled = true;
-        resendLink.style.opacity = '.5';
-        resendLink.textContent = 'Dobara bhejein (' + left + 's)';
-      } else {
-        resendLink.disabled = false;
-        resendLink.style.opacity = '1';
-        resendLink.textContent = 'Dobara bhejein';
-        window.clearInterval(resendTimer);
-        resendTimer = null;
-      }
-    }
-    paint();
-    resendTimer = window.setInterval(paint, 1000);
-  }
-
-  /* step 1 : email → backend check → code bhejo */
-  function sendCodeFlow() {
+  function signupWithVerification() {
     if (busy) return;
     var p = provider();
     if (!p) { showError('Login abhi chalu nahi hai (Firebase config missing).'); return; }
-    /* FIX #1: service down ho to dead-end pehle hi rok do (button disabled
-       hota hai, par kisi tarah call ho gaya to bhi saaf message mile) */
-    if (!emailServiceReady()) {
-      showError('Email verification service setup nahi hai — "Sign in with Google" se account banayein.');
-      return;
-    }
-    var email = (suEmailIn.value || '').trim();
+    var email = (suEmailIn && suEmailIn.value || '').trim();
+    var name = (suNameIn && suNameIn.value || '').trim();
+    var pass = (suPass && suPass.input.value) || '';
     showError('');
     if (!email || email.indexOf('@') < 0) { showError('Sahi email daalein (jaise naam@gmail.com).'); return; }
-    if (Date.now() < su.resendAt && su.code) { showError('Thoda rukein — resend cooldown chal raha hai.'); return; }
-    sendCodeBtn.disabled = true;
-    sendCodeBtn.textContent = 'Check ho raha hai...';
-    Promise.resolve(p.checkEmail ? p.checkEmail(email) : []).then(function (methods) {
-      if (methods && methods.length) {
-        sendCodeBtn.disabled = false;
-        sendCodeBtn.textContent = 'Verification code bhejo';
-        showError('Ye email pehle se registered hai — LOGIN tab se sign in karein.');
-        return;
-      }
-      su.email = email;
-      su.code = genCode();
-      su.exp = Date.now() + CODE_TTL;
-      su.attempts = 0;
-      su.resendAt = Date.now() + RESEND_MS;
-      sendCodeBtn.textContent = 'Code bheja ja raha hai...';
-      return sendCodeEmail(email, su.code).then(function (r) {
-        sendCodeBtn.disabled = false;
-        sendCodeBtn.textContent = 'Verification code bhejo';
-        if (!r.ok) {
-          su.code = null;
-          showError(r.message);
-          return;
-        }
-        codeInfo.textContent = 'Code bheja gaya: ' + email + ' · 5 min valid · ek baar ka use.';
-        if (codeIn) codeIn.value = '';
-        showView('su-code');
-        gSub.textContent = 'Step 2/3 — email par aaya code daalein';
-        startResendCountdown();
-      });
-    }).catch(function (e) {
-      sendCodeBtn.disabled = false;
-      sendCodeBtn.textContent = 'Verification code bhejo';
-      showError(authMsg(e));
-    });
-  }
-
-  /* step 2 : code verify (one-time, expiry, max tries) */
-  function verifyCodeFlow() {
-    if (busy) return;
-    var v = (codeIn.value || '').trim();
-    showError('');
-    if (!su.code) { showError('Pehle verification code bhejein.'); showView('su-email'); return; }
-    if (Date.now() > su.exp) {
-      su.code = null;
-      showError('Code expire ho gaya (5 min) — naya code bhejein.');
-      showView('su-email');
-      return;
-    }
-    if (v !== su.code) {
-      su.attempts++;
-      if (su.attempts >= MAX_ATTEMPTS) {
-        su.code = null;
-        showError('Bahut saari galat koshishein — naya code bhejein.');
-        showView('su-email');
-        return;
-      }
-      showError('Galat code. ' + (MAX_ATTEMPTS - su.attempts) + ' tries baaki.');
-      return;
-    }
-    /* one-time : verify hote hi code invalidate */
-    su.code = null;
-    su.exp = 0;
-    if (resendTimer) { window.clearInterval(resendTimer); resendTimer = null; }
-    gSub.textContent = 'Step 3/3 — naam aur password set karein';
-    showView('su-create');
-  }
-
-  /* step 3 : name + password → account create */
-  function createAccountFlow() {
-    if (busy) return;
-    var p = provider();
-    if (!p) { showError('Login abhi chalu nahi hai (Firebase config missing).'); return; }
-    var name = (suNameIn.value || '').trim();
-    var pass = suPass.input.value || '';
-    showError('');
-    if (!name) { showError('Apna naam likhein.'); suNameIn.focus(); return; }
+    if (!name) { showError('Apna naam likhein.'); return; }
     if (pass.length < MIN_PASS) { showError('Password kam se kam ' + MIN_PASS + ' characters ka hona chahiye.'); return; }
     setBusy(true, 'Account ban raha hai...');
-    Promise.resolve(p.signUp(su.email, pass)).then(function (cred) {
-      var u = (cred && cred.user) || p.currentUser();
-      if (u && u.updateProfile) {
-        return Promise.resolve(u.updateProfile({ displayName: name })).then(function () { return u; });
+    var created = null;
+    Promise.resolve(p.signUp(email, pass)).then(function (cred) {
+      created = (cred && cred.user) || p.currentUser();
+      if (created.updateProfile) {
+        return Promise.resolve(created.updateProfile({ displayName: name })).then(function () { return created; });
       }
+      return created;
+    }).then(function (u) {
+      if (p.sendVerification) return Promise.resolve(p.sendVerification(u)).then(function () { return u; });
       return u;
     }).then(function (u) {
       setBusy(false);
       if (!u || !u.uid) { showError('Account confirm nahi hua. Dobara koshish karein.'); return; }
-      resetSignup();
-      onSignedIn(u);
+      showVerifyView(u.email || email);
     }).catch(function (e) {
       setBusy(false);
+      if (e && (e.code === 'auth/email-already-in-use' || /already-in-use/i.test(String((e && e.message) || '')))) {
+        showError('Is email par account ho sakta hai — Login tab se sign in karein ya "Password bhool gaye?" use karein.');
+        return;
+      }
       showError(authMsg(e));
     });
+  }
+
+  function checkFreshVerification() {
+    if (busy) return;
+    var p = provider();
+    if (!p) { showError('Login abhi chalu nahi hai (Firebase config missing).'); return; }
+    var u = p.currentUser ? p.currentUser() : null;
+    if (!u || !u.uid) { showError('Pehle "Account banayein" se account banayein.'); showView('su-form'); return; }
+    setBusy(true, 'Verify check ho raha hai...');
+    var done = function (fresh) {
+      setBusy(false);
+      var f = fresh || u;
+      try {
+        if (f.emailVerified === true || hasGoogleCred(f)) { onSignedIn(f); return; }
+      } catch (e) { /* ignore */ }
+      showVerifyView(f.email || su.email);
+      showError('Abhi verify nahi hua — email ka link click karke phir dabayein. Spam folder bhi dekhein.');
+    };
+    try {
+      if (p.reloadUser) Promise.resolve(p.reloadUser(u)).then(done, function () { done(u); });
+      else if (u.reload) Promise.resolve(u.reload()).then(function () { done(p.currentUser ? p.currentUser() : u); }, function () { done(u); });
+      else done(u);
+    } catch (e) { done(u); }
+  }
+
+  function resendVerification() {
+    if (busy) return;
+    var p = provider();
+    if (!p) { showError('Login abhi chalu nahi hai (Firebase config missing).'); return; }
+    var u = p.currentUser ? p.currentUser() : null;
+    if (!u || !u.uid) { showError('Pehle account banayein.'); showView('su-form'); return; }
+    showError('');
+    setBusy(true, 'Link dobara bheja ja raha hai...');
+    var ok = function () {
+      setBusy(false);
+      showVerifyView(u.email || su.email);
+      showError('');
+      if (verifyInfo) verifyInfo.textContent = 'Naya link bheja gaya — inbox + Spam dono dekhein.';
+    };
+    var fail = function (e) { setBusy(false); showError(authMsg(e)); };
+    try {
+      if (p.sendVerification) Promise.resolve(p.sendVerification(u)).then(ok, fail);
+      else if (u.sendEmailVerification) Promise.resolve(u.sendEmailVerification()).then(ok, fail);
+      else fail(null);
+    } catch (e) { fail(e); }
   }
 
   /* ================================================================
@@ -954,7 +835,7 @@
   }
 
   /* ================================================================
-     LOGIN (existing users)
+     LOGIN (existing users) — unverified emails BLOCKED
   ================================================================ */
   function submitLogin() {
     if (busy) return;
@@ -970,6 +851,14 @@
       var u = (cred && cred.user) || p.currentUser();
       setBusy(false);
       if (!u || !u.uid) { showError('Login confirm nahi hua. Dobara koshish karein.'); return; }
+      /* Email+password users ke liye verification LAZMI — warna signOut + verify view */
+      if (u.emailVerified !== true && !hasGoogleCred(u)) {
+        try { if (p.sendVerification) p.sendVerification(u).catch(function () { }); } catch (e) { /* ignore */ }
+        showVerifyView(u.email || email);
+        showError('Email verify nahi hai — verification link bheja gaya. Link click karke phir "Maine verify kar liya" dabayein.');
+        try { if (p.signOut) p.signOut().catch(function () { }); } catch (e) { /* ignore */ }
+        return;
+      }
       onSignedIn(u);
     }).catch(function (e) {
       setBusy(false);
@@ -1005,6 +894,21 @@
         window.AchivaBackup.firstRunFlow(session());
       }
     } catch (e) { /* ignore */ }
+  }
+
+  /* Verified gate: unverified email+password user andar NAHI aayega.
+     Google users pehle se verified maane jaate hain. */
+  function requireVerified(u) {
+    if (!u || !u.uid) return null;
+    if (u.emailVerified === true || hasGoogleCred(u)) return u;
+    var p = provider();
+    try { if (p && p.sendVerification) p.sendVerification(u).catch(function () { }); } catch (e) { /* ignore */ }
+    showGate();
+    if (gTitle) gTitle.textContent = 'Email verify karein';
+    showVerifyView(u.email || su.email);
+    showError('Email verify nahi hai — link bheja gaya. Click karke phir "Maine verify kar liya" dabayein.');
+    try { if (p && p.signOut) p.signOut().catch(function () { }); } catch (e) { /* ignore */ }
+    return null;
   }
 
   /* return true = page reload SCHEDULE hua (caller firstRunFlow skip kare) */
@@ -1048,7 +952,9 @@
   }
 
   function onSignedIn(u) {
-    var reloading = resume(u);
+    var v = requireVerified(u);
+    if (!v) return;
+    var reloading = resume(v);
     /* reload schedule hai to firstRunFlow abhi NAHI — modal adhoora mar
        jata. Reload ke baad boot → maybeFirstRun() ise chalata hai. */
     if (!reloading && window.AchivaBackup && window.AchivaBackup.firstRunFlow) {
@@ -1123,9 +1029,8 @@
       if (gSub) gSub.textContent = 'Firebase setup complete nahi hua.';
       if (gTabs) gTabs.style.display = 'none';
       if (vLogin) vLogin.style.display = 'none';
-      if (vSuEmail) vSuEmail.style.display = 'none';
-      if (vSuCode) vSuCode.style.display = 'none';
-      if (vSuCreate) vSuCreate.style.display = 'none';
+      if (vSuForm) vSuForm.style.display = 'none';
+      if (vSuVerify) vSuVerify.style.display = 'none';
       if (vGSetup) vGSetup.style.display = 'none';
       if (googleWrap) googleWrap.style.display = 'none';
       if (gOffline) gOffline.style.display = 'none';
@@ -1150,9 +1055,9 @@
       setBusy(false);
       if (u && u.uid) {
         /* naya Google user (password link nahi) → setup view, warna resume.
-           FIX #2: resume ne reload NAHI kiya (session restore) → pending
-           firstRunFlow flag ho to backup/restore prompt ab chalao */
+           Email+password par verified gate LAZMI — unverified wapas verify view. */
         if (needsGoogleSetup(u)) handleGoogleUser(u);
+        else if (!requireVerified(u)) { /* verify view already shown */ }
         else if (!resume(u)) maybeFirstRun(u);
       }
       else { user = null; showLoginUI(); }
@@ -1193,7 +1098,7 @@
   }
 
   /* ================================================================
-     EXPORT
+     EXPORT — sirf production API, koi test backdoor / _internal nahi
   ================================================================ */
   window.AchivaAuth = {
     ACCOUNT_KEY: ACCOUNT_KEY,
@@ -1211,20 +1116,7 @@
     isOffline: isOffline,
     signOut: signOut,
     authAvailable: authAvailable,
-    setTestProvider: function (p) { testProvider = p || null; },
     onSignIn: function (fn) { signInHandlers.push(fn); },
-    onSignOut: function (fn) { signOutHandlers.push(fn); },
-    _internal: {
-      setMode: setMode,
-      submit: submitLogin,
-      buildGate: buildGate,
-      resume: resume,
-      onSignedIn: onSignedIn,
-      showView: showView,
-      strengthScore: strengthScore,
-      genCode: genCode,
-      sendCodeEmail: sendCodeEmail,
-      suState: function () { return su; }
-    }
+    onSignOut: function (fn) { signOutHandlers.push(fn); }
   };
 })();
