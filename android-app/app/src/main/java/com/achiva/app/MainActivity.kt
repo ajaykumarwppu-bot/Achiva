@@ -294,11 +294,27 @@ class MainActivity : Activity() {
     /** Bridge / JS se current WebView (GoogleAuth callbacks ke liye) */
     fun currentWebView(): android.webkit.WebView? = web
 
-    /** JS config me Web client ID ho to wahi, warna BuildConfig (gradle) */
+    /**
+     * APK mein native Google sign-in (Credential Manager) available hai?
+     *
+     * PROBLEM-2 FIX: pehle ye sirf BuildConfig.GOOGLE_WEB_CLIENT_ID dekhta tha.
+     * Par Web client ID do jagah set ho sakta hai —
+     *   (A) index.html  -> window.ACHIVA_GOOGLE_WEB_CLIENT_ID   (setup guide ka
+     *       "OPTION A, recommended"; GitHub Pages se aata hai, APK rebuild nahi chahiye)
+     *   (B) gradle      -> -PgoogleWebClientId=...              (BuildConfig)
+     * BuildConfig-only check ki wajah se (A) wala rasta KABHI kaam hi nahi karta
+     * tha: auth.js ka gate false rehta, googleSignIn() call hi nahi hota, aur app
+     * chup-chaap purane WebView-redirect flow par gir jaati thi.
+     *
+     * Ab: sirf CAPABILITY check hoti hai (Credential Manager class present hai?).
+     * Config ka faisla startNativeGoogleSignIn() karta hai — wo JS se ID poochhta
+     * hai, aur khaali mili to 'NO_CONFIG' bhejta hai jise sun kar backend/auth.js
+     * khud fallbackWebGoogle() chala deta hai. Ye path pehle se tested hai.
+     */
     fun nativeGoogleAvailable(): Boolean {
         return try {
-            val id = try { BuildConfig.GOOGLE_WEB_CLIENT_ID ?: "" } catch (_: Throwable) { "" }
-            id.isNotBlank()
+            Class.forName("androidx.credentials.CredentialManager")
+            true
         } catch (_: Throwable) { false }
     }
 

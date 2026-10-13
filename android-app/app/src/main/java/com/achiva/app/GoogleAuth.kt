@@ -2,7 +2,6 @@ package com.achiva.app
 
 import android.content.Intent
 import android.net.Uri
-import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
@@ -16,7 +15,10 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * GOOGLE-FIX (native sign-in — laptop jaisa account chooser).
@@ -30,7 +32,18 @@ object GoogleAuth {
     const val JS_CUSTOM_TAB_CB = "__onNativeGoogleCustomTab"
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val bg = Executors.newSingleThreadExecutor()
+    /* BUILD-FIX: androidx.credentials ke 1.2.x AUR 1.3.x — DONO mein
+       getCredential() sirf Kotlin `suspend` overload ke roop mein publish
+       hua hai (dono AAR ki class-file method tables parse karke verify
+       kiya gaya). Purana 5-arg callback overload
+         getCredential(context, request, CancellationSignal, Executor,
+                       CredentialManagerCallback)
+       kisi bhi published version mein EXIST NAHI KARTA — isliye
+       compileDebugKotlin fail ho raha tha
+       ("None of the following functions can be called...").
+       Ab call coroutine se hota hai; main-thread dispatcher isliye ki
+       result par WebView.evaluateJavascript / CustomTab launch karna hai. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var cachedBase: String? = null
 
     fun resolveWebClientId(jsClientId: String?): String {
@@ -54,21 +67,17 @@ object GoogleAuth {
                 .setAutoSelectEnabled(false)
                 .build()
             val request = GetCredentialRequest.Builder().addCredentialOption(googleOption).build()
-            val signal = CancellationSignal()
-            bg.execute {
+            scope.launch {
                 try {
-                    cm.getCredential(activity, request, signal, bg,
-                        object : androidx.credentials.CredentialManagerCallback<
-                            androidx.credentials.GetCredentialResponse, GetCredentialException> {
-                            override fun onResult(result: androidx.credentials.GetCredentialResponse) {
-                                handleResult(web, result)
-                            }
-                            override fun onError(e: GetCredentialException) {
-                                handleError(activity, web, e, clientId)
-                            }
-                        })
+                    /* suspend overload — 2 args. Result main thread par milta hai. */
+                    val result = cm.getCredential(activity, request)
+                    handleResult(web, result)
+                } catch (e: GetCredentialException) {
+                    /* user-cancel / no-credential / custom -> Custom Tab fallback.
+                       NOTE: GetCredentialCancellationException isi ka subclass hai. */
+                    handleError(activity, web, e, clientId)
                 } catch (t: Throwable) {
-                    mainHandler.post { openCustomTab(activity, clientId, "EX:" + t.javaClass.simpleName) }
+                    openCustomTab(activity, clientId, "EX:" + t.javaClass.simpleName)
                 }
             }
         } catch (t: Throwable) {
