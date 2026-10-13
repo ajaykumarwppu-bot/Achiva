@@ -160,6 +160,8 @@ class MainActivity : Activity() {
                        aur pending save (retry-queue) drain karo */
                     reconcileWeb()
                     drainPendingSave()
+                    /* GOOGLE-FIX: Custom-Tab fallback ke liye page base yaad rakho */
+                    try { GoogleAuth.notePageUrl(finishedUrl) } catch (_: Throwable) { }
                 }
 
                 override fun shouldOverrideUrlLoading(
@@ -168,6 +170,12 @@ class MainActivity : Activity() {
                     return try {
                         val u = request?.url?.toString() ?: return false
                         val host = request?.url?.host ?: ""
+                        /* GOOGLE-FIX : deep-link (achiva://auth/...) Custom Tab se
+                           wapas aaye → WebView ko forward karo, browser mat kholo */
+                        if (u.startsWith("achiva://")) {
+                            try { GoogleAuth.handleDeepLink(this@MainActivity, request.url) } catch (_: Throwable) { }
+                            return true
+                        }
                         /* GOOGLE-FIX : Google sign-in redirect flow ke saare
                            pages app ke ANDAR khulein (popup WebView mein block
                            hota hai, redirect chalta hai) */
@@ -279,6 +287,65 @@ class MainActivity : Activity() {
         } else {
             super.onActivityResult(requestCode, resultCode, data)
         }
+    }
+
+    /* ============ GOOGLE-FIX (native sign-in entry points) ============ */
+
+    /** Bridge / JS se current WebView (GoogleAuth callbacks ke liye) */
+    fun currentWebView(): android.webkit.WebView? = web
+
+    /** JS config me Web client ID ho to wahi, warna BuildConfig (gradle) */
+    fun nativeGoogleAvailable(): Boolean {
+        return try {
+            val id = try { BuildConfig.GOOGLE_WEB_CLIENT_ID ?: "" } catch (_: Throwable) { "" }
+            id.isNotBlank()
+        } catch (_: Throwable) { false }
+    }
+
+    /** Bridge.googleSignIn() → system account chooser (Credential Manager) */
+    fun startNativeGoogleSignIn() {
+        val w = web
+        try {
+            GoogleAuth.jsGetWebClientId(w) { jsId ->
+                try {
+                    val id = if (jsId.isNotBlank()) jsId else {
+                        try { BuildConfig.GOOGLE_WEB_CLIENT_ID ?: "" } catch (_: Throwable) { "" }
+                    }
+                    if (id.isBlank()) {
+                        // Config nahi: auth.js purana WebView redirect flow chalayega.
+                        runOnUiThread {
+                            try {
+                                w?.evaluateJavascript(
+                                    "(function(){try{if(window.__onNativeGoogleError)" +
+                                        "{window.__onNativeGoogleError('NO_CONFIG');}}catch(e){}})();", null)
+                            } catch (_: Throwable) { }
+                        }
+                        return@jsGetWebClientId
+                    }
+                    GoogleAuth.signIn(this, w, id)
+                } catch (t: Throwable) {
+                    try { GoogleAuth.openCustomTab(this, "", "EX:" + t.javaClass.simpleName) } catch (_: Throwable) { }
+                }
+            }
+        } catch (t: Throwable) {
+            try { GoogleAuth.openCustomTab(this, "", "EX:" + t.javaClass.simpleName) } catch (_: Throwable) { }
+        }
+    }
+
+    /** Bridge.googleOpenCustomTab(url) → Chrome Custom Tab */
+    fun openGoogleCustomTab(url: String?) {
+        try { GoogleAuth.openCustomTabUrl(this, url) } catch (_: Throwable) { }
+    }
+
+    /** Custom Tab / browser se deep-link return (achiva://auth/google) */
+    override fun onNewIntent(intent: android.content.Intent?) {
+        super.onNewIntent(intent)
+        try {
+            val uri = intent?.data
+            if (uri != null && uri.scheme == "achiva") {
+                GoogleAuth.handleDeepLink(this, uri)
+            }
+        } catch (_: Throwable) { }
     }
 
     override fun onDestroy() {

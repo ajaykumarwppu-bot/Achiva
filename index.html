@@ -309,6 +309,16 @@
        backup → settings) ab upar wale loader ke SRC manifest mein
        hain — order bilkul same, firebase CDN ke baad. -->
 
+  <!-- GOOGLE-FIX (native sign-in): Web client ID yahan paste karo
+       (Firebase Console → Authentication → Sign-in method → Google →
+       Web SDK configuration → "Web client ID"):
+       window.ACHIVA_GOOGLE_WEB_CLIENT_ID = "698527829835-xxxx.apps.googleusercontent.com";
+       Khaali raha to: (1) APK gradle ki GOOGLE_WEB_CLIENT_ID use karega,
+       (2) dono khaali → purana WebView redirect flow (pehle jaisa). -->
+  <script>
+    window.ACHIVA_GOOGLE_WEB_CLIENT_ID = "";
+  </script>
+
   <!-- header ka own chhota sa script : sirf live date
        (theme toggle ab Settings sheet mein hai → backend/settings.js) -->
   <script>

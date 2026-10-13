@@ -50,6 +50,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- GOOGLE-FIX (Custom-Tab fallback): Chrome se wapas app mein
+                 aane ke liye deep-link: achiva://auth/google -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="achiva" android:host="auth" android:pathPrefix="/google" />
+            </intent-filter>
         </activity>
 
         <!-- Timer-complete ALARM screen : lock ke upar, screen on -->

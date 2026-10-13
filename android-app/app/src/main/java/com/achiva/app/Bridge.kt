@@ -7,6 +7,11 @@ import android.webkit.JavascriptInterface
  * Web ↔ Native bridge.
  * WebView mein "AchivaNative" naam se inject hota hai.
  * Saare methods JSON/string return karte hain jo web side parse karti hai.
+ *
+ * GOOGLE-FIX (native sign-in):
+ *   googleSignIn() → MainActivity.startNativeGoogleSignIn() chalata hai.
+ *   Result wapas WebView ko window.__onNativeGoogleToken / __onNativeGoogleError
+ *   JS callbacks se milta hai (backend/auth.js sunta hai).
  */
 class Bridge(private val ctx: Context) {
 
@@ -15,6 +20,31 @@ class Bridge(private val ctx: Context) {
     /** bridge zinda hai? web isi se detect karta hai */
     @JavascriptInterface
     fun isReady(): String = "1"
+
+    /** APK mein native Google sign-in available hai ya nahi (web fallback decide kare) */
+    @JavascriptInterface
+    fun googleNativeAvailable(): String {
+        return try {
+            val act = MainActivity.instance
+            if (act != null && act.nativeGoogleAvailable()) "1" else "0"
+        } catch (_: Throwable) { "0" }
+    }
+
+    /** WebView JS → native Google account chooser kholo (async, result JS callback se) */
+    @JavascriptInterface
+    fun googleSignIn() {
+        try {
+            MainActivity.instance?.startNativeGoogleSignIn()
+        } catch (_: Throwable) { }
+    }
+
+    /** Custom-Tab fallback ke liye page URL (Firebase __/auth/handler deep-link banane hetu) */
+    @JavascriptInterface
+    fun googleOpenCustomTab(url: String?) {
+        try {
+            MainActivity.instance?.openGoogleCustomTab(url)
+        } catch (_: Throwable) { }
+    }
 
     /** Usage-Access permission on hai ya nahi */
     @JavascriptInterface

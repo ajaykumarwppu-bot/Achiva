@@ -96,7 +96,15 @@
          isliye full-page consent (app ke andar) */
       signInGoogleRedirect: function () {
         var pr = new window.firebase.auth.GoogleAuthProvider();
+        try { pr.setCustomParameters({ prompt: 'select_account' }); } catch (e) { /* ignore */ }
         return fa.signInWithRedirect(pr);
+      },
+      /* GOOGLE-FIX (native): Credential Manager se mila ID token → Firebase session.
+         WebView ke bahar system account chooser se aata hai, isliye phone ke
+         existing accounts dikhte hain (laptop jaisa). */
+      signInGoogleWithIdToken: function (idToken) {
+        var cred = window.firebase.auth.GoogleAuthProvider.credential(idToken);
+        return fa.signInWithCredential(cred);
       },
       getRedirectResult: function () { return fa.getRedirectResult(); }
     };
@@ -753,6 +761,87 @@
     } catch (e) { return false; }
   }
 
+  /* GOOGLE-FIX: native bridge available? (Credential Manager wala APK) */
+  function nativeGoogleAvailable() {
+    try {
+      if (!window.AchivaNative) return false;
+      if (typeof window.AchivaNative.googleNativeAvailable === 'function') {
+        return String(window.AchivaNative.googleNativeAvailable()) === '1';
+      }
+      // Purana APK (bridge mein method nahi) → googleSignIn() hi signal hai.
+      return typeof window.AchivaNative.googleSignIn === 'function';
+    } catch (e) { return false; }
+  }
+
+  /* GOOGLE-FIX: native ID-token flow (ek baar listeners install karo) */
+  var nativeListenersOn = false;
+  function ensureNativeListeners(p) {
+    if (nativeListenersOn) return;
+    nativeListenersOn = true;
+    try {
+      // Success: native account chooser se ID token aaya → Firebase login.
+      window.__onNativeGoogleToken = function (idToken) {
+        try {
+          if (!idToken) { setBusy(false); return; }
+          if (!p || !p.signInGoogleWithIdToken) { setBusy(false); return; }
+          Promise.resolve(p.signInGoogleWithIdToken(idToken)).then(function (cred) {
+            setBusy(false);
+            handleGoogleUser((cred && cred.user) || (p.currentUser && p.currentUser()));
+          }).catch(function (e) {
+            setBusy(false);
+            showError(authMsg(e));
+          });
+        } catch (e) { try { setBusy(false); } catch (x) { /* ignore */ } }
+      };
+      // Config missing / cancel: purana web flow (redirect/popup) chalao.
+      window.__onNativeGoogleError = function (code) {
+        try {
+          var c = String(code || '');
+          if (c === 'CANCELLED') { setBusy(false); return; }  // user ne chooser band kiya
+          setBusy(false);
+          fallbackWebGoogle(p);
+        } catch (e) { try { setBusy(false); } catch (x) { /* ignore */ } }
+      };
+      // Custom-Tab fallback khula: spinner text badlo, session wapas aane par onAuth sambhalega.
+      window.__onNativeGoogleCustomTab = function () {
+        try { setBusy(true, 'Chrome mein Google khul raha hai...'); } catch (e) { /* ignore */ }
+      };
+      window.__onNativeGoogleRedirect = function () {
+        try { setBusy(false); } catch (e) { /* ignore */ }
+      };
+    } catch (e) { /* ignore */ }
+  }
+
+  /* GOOGLE-FIX: purana web flow (WebView redirect / desktop popup) */
+  function fallbackWebGoogle(p) {
+    showError('');
+    if (isWebView() && p.signInGoogleRedirect) {
+      setBusy(true, 'Google khul raha hai...');
+      Promise.resolve(p.signInGoogleRedirect()).catch(function (e) {
+        setBusy(false);
+        showError(authMsg(e));
+      });
+      return;
+    }
+    setBusy(true, 'Google khul raha hai...');
+    Promise.resolve(p.signInGoogle()).then(function (cred) {
+      setBusy(false);
+      handleGoogleUser((cred && cred.user) || p.currentUser());
+    }).catch(function (e) {
+      setBusy(false);
+      var raw = String((e && e.message) || e || '');
+      if (/disallowed_useragent|webview|popup-blocked|popup-closed/i.test(raw) && p.signInGoogleRedirect) {
+        setBusy(true, 'Google khul raha hai...');
+        Promise.resolve(p.signInGoogleRedirect()).catch(function (e2) {
+          setBusy(false);
+          showError(authMsg(e2));
+        });
+        return;
+      }
+      showError(authMsg(e));
+    });
+  }
+
   /* Google sign-in ka result (popup YA redirect) — setup ya entry */
   function handleGoogleUser(u) {
     if (!u || !u.uid) return;
@@ -779,33 +868,18 @@
     if (!p) { showError('Login abhi chalu nahi hai (Firebase config missing).'); return; }
     if (!p.signInGoogle) { showError('Google login is environment mein available nahi hai.'); return; }
     showError('');
-    /* WebView : popup block hota hai → seedha redirect flow */
-    if (isWebView() && p.signInGoogleRedirect) {
-      setBusy(true, 'Google khul raha hai...');
-      Promise.resolve(p.signInGoogleRedirect()).catch(function (e) {
-        setBusy(false);
-        showError(authMsg(e));
-      });
-      return;
-    }
-    setBusy(true, 'Google khul raha hai...');
-    Promise.resolve(p.signInGoogle()).then(function (cred) {
-      setBusy(false);
-      handleGoogleUser((cred && cred.user) || p.currentUser());
-    }).catch(function (e) {
-      setBusy(false);
-      var raw = String((e && e.message) || e || '');
-      /* popup block (WebView/disallowed) → redirect se try karo */
-      if (/disallowed_useragent|webview|popup-blocked|popup-closed/i.test(raw) && p.signInGoogleRedirect) {
+    /* GOOGLE-FIX: APK mein native bridge ho → pehle SYSTEM account chooser
+       (Credential Manager) try karo — phone ke existing accounts dikhenge.
+       Fail / purana APK → neeche wala purana web flow (redirect/popup). */
+    try {
+      ensureNativeListeners(p);
+      if (nativeGoogleAvailable() && window.AchivaNative.googleSignIn) {
         setBusy(true, 'Google khul raha hai...');
-        Promise.resolve(p.signInGoogleRedirect()).catch(function (e2) {
-          setBusy(false);
-          showError(authMsg(e2));
-        });
+        window.AchivaNative.googleSignIn();
         return;
       }
-      showError(authMsg(e));
-    });
+    } catch (e) { /* ignore → web fallback */ }
+    fallbackWebGoogle(p);
   }
 
   function googleSetupSave() {
